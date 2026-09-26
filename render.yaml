@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: latestjob-automation
+    env: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: ADMIN_PASSWORD
+        value: admin123
+      - key: PUBLISH_MODE
+        value: SAFE
+      - key: GEMINI_API_KEY
+        value: AQ.Ab8RN6LMhtimbesraTusOCLzSHZmkM_7gW04jyYF-i5YUrRbmA

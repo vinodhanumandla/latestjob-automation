@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LatestJobNotifications — Automated Post & Publishing Hub</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --border: #334155;
+      --primary: #0284c7;
+      --primary-hover: #0369a1;
+      --accent: #38bdf8;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 24px; min-height: 100vh; }
+    
+    /* Header */
+    .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+    .header h1 { font-size: 24px; font-weight: 800; color: #ffffff; display: flex; align-items: center; gap: 10px; }
+    .header .tag { background: #0369a1; color: #fff; font-size: 12px; padding: 4px 10px; border-radius: 20px; font-weight: 600; }
+    .status-badge-safe { background: #065f46; color: #34d399; padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
+
+    /* Stats Grid */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+    .stat-card p { font-size: 13px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; }
+    .stat-card h3 { font-size: 28px; font-weight: 800; }
+
+    /* Control Panel */
+    .control-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 24px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; }
+    .scan-group { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .input-date, .input-url { background: #0f172a; border: 1px solid var(--border); color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 14px; outline: none; }
+    .btn { background: var(--primary); color: #fff; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: 0.2s; }
+    .btn:hover { background: var(--primary-hover); }
+    .btn-success { background: var(--success); }
+    .btn-success:hover { background: #059669; }
+    .btn-warning { background: var(--warning); color: #000; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 6px; }
+
+    /* Table */
+    .table-container { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+    th { background: #162032; padding: 14px 18px; color: var(--text-muted); font-weight: 700; border-bottom: 1px solid var(--border); }
+    td { padding: 16px 18px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:hover { background: #253349; }
+
+    /* Badges */
+    .badge { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; display: inline-block; }
+    .badge-discovered { background: #334155; color: #94a3b8; }
+    .badge-draft { background: #1e3a8a; color: #60a5fa; }
+    .badge-published { background: #065f46; color: #34d399; }
+    .badge-duplicate { background: #475569; color: #cbd5e1; }
+
+    /* Modal */
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; justify-content: center; align-items: center; }
+    .modal-content { background: var(--card-bg); width: 90%; max-width: 900px; max-height: 90vh; border-radius: 14px; border: 1px solid var(--border); overflow-y: auto; padding: 24px; position: relative; }
+    .modal-close { position: absolute; top: 20px; right: 20px; font-size: 20px; color: var(--text-muted); cursor: pointer; }
+    .preview-box { background: #ffffff; color: #000000; padding: 24px; border-radius: 10px; margin-top: 16px; font-family: sans-serif; overflow-x: auto; }
+
+    /* View Switcher */
+    .view-toggle-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: 0.2s;
+    }
+    .view-toggle-btn.active {
+      background: #0284c7;
+      color: #ffffff;
+    }
+
+    /* Mobile Cards View */
+    .mobile-cards-container {
+      display: none;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .job-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+    .job-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .job-card-org {
+      font-size: 16px;
+      font-weight: 800;
+      color: #ffffff;
+      line-height: 1.35;
+    }
+    .job-card-post {
+      font-size: 13px;
+      color: #cbd5e1;
+      line-height: 1.4;
+      margin-top: 4px;
+    }
+    .job-card-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .job-chip {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      padding: 5px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #e2e8f0;
+    }
+    .job-chip-vacancies {
+      color: #34d399;
+      border-color: rgba(52, 211, 153, 0.3);
+    }
+    .job-chip-lastdate {
+      color: #f87171;
+      border-color: rgba(248, 113, 113, 0.3);
+    }
+    .job-chip-score {
+      color: #38bdf8;
+      border-color: rgba(56, 189, 248, 0.3);
+      font-weight: 700;
+    }
+    .job-card-actions-box {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .job-card-secondary-btns {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .job-card-secondary-btns .btn {
+      flex: 1;
+      min-width: 80px;
+      justify-content: center;
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+
+    /* Mobile Responsive Breakpoints */
+    @media (max-width: 768px) {
+      body { padding: 12px; }
+      .header { flex-direction: column; align-items: flex-start; gap: 12px; }
+      .header h1 { font-size: 19px; }
+      .stats-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+      .stat-card { padding: 12px; }
+      .stat-card h3 { font-size: 22px; }
+      
+      .control-card { padding: 14px; gap: 12px; flex-direction: column; align-items: stretch; }
+      .scan-group { width: 100%; display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+      .input-date, .input-url { width: 100% !important; }
+      .scan-group .btn { width: 100%; justify-content: center; padding: 12px; }
+      
+      /* Default to cards on mobile */
+      .table-container { display: none; }
+      .mobile-cards-container { display: flex; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <h1><span>🚀</span> LatestJobNotifications Automation Hub</h1>
+      <p style="color: var(--text-muted); font-size: 13px; margin-top: 4px;">Automated Discovery • Gemini AI Post & HD Thumbnail Generation • Safe Admin Review</p>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <a href="/download-apk" class="btn btn-sm" style="background: #10b981; text-decoration: none; color: white;" target="_blank"><i class="fab fa-android"></i> 📱 Download Android App</a>
+      <button class="btn btn-sm" style="background: #334155;" onclick="openTokenModal()"><i class="fas fa-key"></i> Connect Blogger API</button>
+      <span class="status-badge-safe"><i class="fas fa-shield-alt"></i> SAFE REVIEW MODE</span>
+    </div>
+  </div>
+
+  <!-- Stats Grid -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <p>Total Discovered Jobs</p>
+      <h3>{{ jobs|length }}</h3>
+    </div>
+    <div class="stat-card">
+      <p>Discovered / Pending</p>
+      <h3 style="color: #fbbf24;">{{ status_counts.get('DISCOVERED', 0) }}</h3>
+    </div>
+    <div class="stat-card">
+      <p>Sent to Blogger Drafts</p>
+      <h3 style="color: #c084fc;">{{ status_counts.get('SENT_DRAFT', 0) }}</h3>
+    </div>
+    <div class="stat-card">
+      <p>Published to Blogger Live</p>
+      <h3 style="color: #34d399;">{{ status_counts.get('PUBLISHED', 0) }}</h3>
+    </div>
+  </div>
+
+
+  <!-- Controls Bar -->
+  <div class="control-card">
+    <div class="scan-group" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+      <label style="font-size: 13px; font-weight: 700; color: #38bdf8; display: inline-flex; align-items: center; gap: 6px;">
+        <i class="far fa-calendar-alt"></i> SCAN DATE:
+      </label>
+      <input type="date" id="scanDate" class="input-date" value="{{ today_iso }}" style="color-scheme: dark; padding: 8px 12px; cursor: pointer;" title="Select date to scan from FreeJobAlert">
+      <button class="btn" id="btnScan" onclick="triggerDateScan()"><i class="fas fa-search"></i> Scan FreeJobAlert</button>
+      <button class="btn" style="background: #2563eb;" onclick="refreshDashboard()" title="Check for newly scanned/recent posts"><i class="fas fa-sync-alt" id="refreshIcon"></i> Refresh</button>
+    </div>
+    <div class="scan-group">
+      <input type="text" id="customUrl" class="input-url" style="width: 320px;" placeholder="Paste FreeJobAlert [Get Details] URL for instant generate...">
+      <button class="btn btn-warning" onclick="triggerCustomJob()"><i class="fas fa-bolt"></i> Instant Generate</button>
+    </div>
+  </div>
+
+  <!-- Jobs List Section Header with View Switcher -->
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+    <span style="font-size: 14px; font-weight: 700; color: #cbd5e1; display: flex; align-items: center; gap: 8px;">
+      <i class="fas fa-list"></i> NOTIFICATIONS LIST ({{ jobs|length }})
+    </span>
+    <div style="display: flex; gap: 4px; background: var(--card-bg); padding: 4px; border-radius: 8px; border: 1px solid var(--border);">
+      <button id="btnViewTable" class="view-toggle-btn active" onclick="switchView('table')"><i class="fas fa-table"></i> Table</button>
+      <button id="btnViewCards" class="view-toggle-btn" onclick="switchView('cards')"><i class="fas fa-th-large"></i> Cards</button>
+    </div>
+  </div>
+
+  <!-- Jobs Table (Desktop View) -->
+  <div id="tableContainer" class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Post Date</th>
+          <th>Organization &amp; Post Name</th>
+          <th>No. of Posts</th>
+          <th>Last Date</th>
+          <th>Status</th>
+          <th>Score</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td style="font-size: 13px; color: #94a3b8;">#{{ job.id }}</td>
+          <td>
+            <strong style="color: #38bdf8;">{{ job.post_date or 'Recent' }}</strong>
+            {% set today_str = now_date %}
+            {% set job_date_str = job.post_date or '' %}
+            {% if job_date_str == today_str %}
+              <div style="font-size: 10px; color: #34d399; font-weight: 700; margin-top: 2px;">TODAY</div>
+            {% elif job_date_str == yesterday_str %}
+              <div style="font-size: 10px; color: #fbbf24; font-weight: 700; margin-top: 2px;">YESTERDAY</div>
+            {% elif job_date_str == day_before_str %}
+              <div style="font-size: 10px; color: #f87171; font-weight: 700; margin-top: 2px;">2 DAYS AGO</div>
+            {% endif %}
+          </td>
+          <td>
+            <div style="font-weight: 800; color: #ffffff; font-size: 15px;">{{ job.organization }}</div>
+            <div style="color: #cbd5e1; font-size: 12px; margin-top: 2px;">{{ job.post_name }}</div>
+          </td>
+          <td><span style="color: #34d399; font-weight: 700; font-size: 14px;">{{ job.total_vacancies or 'Check Notice' }}</span></td>
+          <td><span style="color: #f87171; font-weight: 700;">{{ job.last_date or 'Check Notice' }}</span></td>
+          <td>
+            {% if job.status == 'SENT_DRAFT' %}
+              <span class="badge" style="background: #581c87; color: #d8b4fe; border: 1px solid #7e22ce;"><i class="fas fa-check-double"></i> SENT DRAFT</span>
+            {% elif job.status == 'DRAFT_READY' %}
+              <span class="badge badge-draft"><i class="fas fa-file-alt"></i> DRAFT READY</span>
+            {% elif job.status == 'PUBLISHED' %}
+              <span class="badge badge-published"><i class="fas fa-globe"></i> PUBLISHED</span>
+            {% elif job.status == 'DUPLICATE' %}
+              <span class="badge badge-duplicate">DUPLICATE</span>
+            {% else %}
+              <span class="badge badge-discovered"><i class="fas fa-search"></i> DISCOVERED</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if job.validation_score %}
+              <span style="color: #38bdf8; font-weight: 800;">{{ job.validation_score }}/100</span>
+            {% else %}
+              <span style="color: #475569;">-</span>
+            {% endif %}
+          </td>
+          <td>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+              {% if job.status != 'PUBLISHED' and job.status != 'DUPLICATE' %}
+                <button class="btn btn-sm" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; font-weight: 800; border: 1px solid #34d399; box-shadow: 0 2px 8px rgba(16,185,129,0.3);" onclick="directPublish({{ job.id }}, this)" title="1-Click: AI Generate + Send Draft + Publish LIVE to Blogger">
+                  <i class="fas fa-bolt"></i> Direct Publish
+                </button>
+              {% endif %}
+
+              {% if job.status == 'PUBLISHED' and job.blogger_url %}
+                <a href="{{ job.blogger_url }}" target="_blank" class="btn btn-sm" style="background: #064e3b; color: #34d399; border: 1px solid #059669; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; font-weight: 700;" title="Open Published Post in Blogger">
+                  <i class="fas fa-external-link-alt"></i> View Live
+                </a>
+              {% endif %}
+
+              {% if job.status == 'DISCOVERED' or job.status == 'FAILED' %}
+                <button class="btn btn-sm" onclick="processJob({{ job.id }})" title="Generate AI post + thumbnail"><i class="fas fa-magic"></i> Generate</button>
+                <button class="btn btn-sm" style="background: #0284c7;" onclick="createDraft({{ job.id }})" title="Generate + push directly as DRAFT to Blogger"><i class="fas fa-file-export"></i> Send Draft</button>
+              {% endif %}
+
+              {% if job.status == 'DRAFT_READY' or job.status == 'SENT_DRAFT' or job.status == 'PUBLISHED' or job.gen_id %}
+                <button class="btn btn-sm" style="background: #475569;" onclick="previewJob({{ job.id }})"><i class="fas fa-eye"></i> Preview</button>
+              {% endif %}
+
+              {% if job.status == 'DRAFT_READY' %}
+                <button class="btn btn-sm" style="background: #0284c7;" onclick="createDraft({{ job.id }})" title="Push as DRAFT to Blogger for review"><i class="fas fa-file-export"></i> Approve as Draft</button>
+                <button class="btn btn-sm btn-success" onclick="publishLive({{ job.id }})" title="Publish live to Blogger"><i class="fas fa-paper-plane"></i> Publish Live</button>
+              {% endif %}
+
+              {% if job.status == 'SENT_DRAFT' %}
+                <button class="btn btn-sm btn-success" onclick="publishLive({{ job.id }})" title="Publish the Blogger Draft LIVE"><i class="fas fa-paper-plane"></i> Publish Live</button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" style="text-align: center; padding: 30px; color: var(--text-muted);">
+            No jobs fetched yet. Click "Scan FreeJobAlert" to discover today's notifications.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Mobile Cards View (Touch-Friendly Responsive Cards) -->
+  <div id="cardsContainer" class="mobile-cards-container">
+    {% for job in jobs %}
+    {% set today_str = now_date %}
+    {% set job_date_str = job.post_date or '' %}
+    <div class="job-card">
+      <div class="job-card-header">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span style="font-size: 12px; color: #94a3b8; font-weight: 700; background: #0f172a; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border);">#{{ job.id }}</span>
+          <span style="font-size: 13px; font-weight: 700; color: #38bdf8; display: inline-flex; align-items: center; gap: 4px;">
+            <i class="far fa-calendar-alt"></i> {{ job.post_date or 'Recent' }}
+          </span>
+          {% if job_date_str == today_str %}
+            <span style="font-size: 10px; color: #34d399; background: #065f46; padding: 2px 6px; border-radius: 4px; font-weight: 800;">TODAY</span>
+          {% elif job_date_str == yesterday_str %}
+            <span style="font-size: 10px; color: #fbbf24; background: #854d0e; padding: 2px 6px; border-radius: 4px; font-weight: 800;">YESTERDAY</span>
+          {% elif job_date_str == day_before_str %}
+            <span style="font-size: 10px; color: #f87171; background: #7f1d1d; padding: 2px 6px; border-radius: 4px; font-weight: 800;">2 DAYS AGO</span>
+          {% endif %}
+        </div>
+        <div>
+          {% if job.status == 'SENT_DRAFT' %}
+            <span class="badge" style="background: #581c87; color: #d8b4fe; border: 1px solid #7e22ce;"><i class="fas fa-check-double"></i> SENT DRAFT</span>
+          {% elif job.status == 'DRAFT_READY' %}
+            <span class="badge badge-draft"><i class="fas fa-file-alt"></i> DRAFT READY</span>
+          {% elif job.status == 'PUBLISHED' %}
+            <span class="badge badge-published"><i class="fas fa-globe"></i> PUBLISHED</span>
+          {% elif job.status == 'DUPLICATE' %}
+            <span class="badge badge-duplicate">DUPLICATE</span>
+          {% else %}
+            <span class="badge badge-discovered"><i class="fas fa-search"></i> DISCOVERED</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div>
+        <div class="job-card-org">{{ job.organization }}</div>
+        <div class="job-card-post">{{ job.post_name }}</div>
+      </div>
+
+      <div class="job-card-chips">
+        {% if job.total_vacancies %}
+          <div class="job-chip job-chip-vacancies"><i class="fas fa-users"></i> <span>{{ job.total_vacancies }}</span></div>
+        {% endif %}
+        {% if job.last_date %}
+          <div class="job-chip job-chip-lastdate"><i class="far fa-clock"></i> <span>Last Date: {{ job.last_date }}</span></div>
+        {% endif %}
+        {% if job.validation_score %}
+          <div class="job-chip job-chip-score"><i class="fas fa-check-circle"></i> <span>Score: {{ job.validation_score }}/100</span></div>
+        {% endif %}
+      </div>
+
+      <div class="job-card-actions-box">
+        {% if job.status != 'PUBLISHED' and job.status != 'DUPLICATE' %}
+          <button class="btn" style="width: 100%; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; font-weight: 800; border: 1px solid #34d399; box-shadow: 0 3px 10px rgba(16,185,129,0.3); padding: 12px; justify-content: center; font-size: 14px;" onclick="directPublish({{ job.id }}, this)">
+            <i class="fas fa-bolt"></i> ⚡ Direct Publish Live
+          </button>
+        {% endif %}
+
+        {% if job.status == 'PUBLISHED' and job.blogger_url %}
+          <a href="{{ job.blogger_url }}" target="_blank" class="btn" style="width: 100%; background: #064e3b; color: #34d399; border: 1px solid #059669; text-decoration: none; justify-content: center; padding: 10px; font-weight: 700;">
+            <i class="fas fa-external-link-alt"></i> View Live on Blogger
+          </a>
+        {% endif %}
+
+        <div class="job-card-secondary-btns">
+          {% if job.status == 'DISCOVERED' or job.status == 'FAILED' %}
+            <button class="btn btn-sm" onclick="processJob({{ job.id }})"><i class="fas fa-magic"></i> Generate</button>
+            <button class="btn btn-sm" style="background: #0284c7;" onclick="createDraft({{ job.id }})"><i class="fas fa-file-export"></i> Send Draft</button>
+          {% endif %}
+
+          {% if job.status == 'DRAFT_READY' or job.status == 'SENT_DRAFT' or job.status == 'PUBLISHED' or job.gen_id %}
+            <button class="btn btn-sm" style="background: #475569;" onclick="previewJob({{ job.id }})"><i class="fas fa-eye"></i> Preview</button>
+          {% endif %}
+
+          {% if job.status == 'DRAFT_READY' %}
+            <button class="btn btn-sm" style="background: #0284c7;" onclick="createDraft({{ job.id }})"><i class="fas fa-file-export"></i> Approve Draft</button>
+            <button class="btn btn-sm btn-success" onclick="publishLive({{ job.id }})"><i class="fas fa-paper-plane"></i> Publish</button>
+          {% endif %}
+
+          {% if job.status == 'SENT_DRAFT' %}
+            <button class="btn btn-sm btn-success" onclick="publishLive({{ job.id }})"><i class="fas fa-paper-plane"></i> Publish Live</button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 30px; color: var(--text-muted); background: var(--card-bg); border-radius: 12px;">
+      No jobs fetched yet. Click "Scan FreeJobAlert" to discover today's notifications.
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Live Preview Modal -->
+  <div id="previewModal" class="modal">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeModal()">&times;</span>
+      <h2 id="modalTitle" style="color: #38bdf8; margin-bottom: 8px;">Post Preview</h2>
+      <div id="modalMeta" style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;"></div>
+      <div id="modalHtml" class="preview-box"></div>
+    </div>
+  </div>
+
+  <!-- Blogger Token Modal -->
+  <div id="tokenModal" class="modal">
+    <div class="modal-content" style="max-width: 550px;">
+      <span class="modal-close" onclick="closeTokenModal()">&times;</span>
+      <h2 style="color: #38bdf8; margin-bottom: 8px;"><i class="fas fa-key"></i> Connect Blogger API</h2>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+        Paste your Google Blogger OAuth2 Access Token to connect directly with your blog:
+      </p>
+      <input type="text" id="bloggerTokenInput" class="input-url" style="width: 100%; margin-bottom: 16px;" placeholder="Paste OAuth Access Token (ya29.a0...)...">
+      <div style="display: flex; justify-content: flex-end; gap: 10px;">
+        <button class="btn" style="background: #475569;" onclick="closeTokenModal()">Cancel</button>
+        <button class="btn btn-success" onclick="saveBloggerToken()"><i class="fas fa-save"></i> Save Token</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function switchView(view) {
+      const tbl = document.getElementById("tableContainer");
+      const crd = document.getElementById("cardsContainer");
+      const btnTbl = document.getElementById("btnViewTable");
+      const btnCrd = document.getElementById("btnViewCards");
+
+      if (view === "cards") {
+        if (tbl) tbl.style.display = "none";
+        if (crd) crd.style.display = "flex";
+        if (btnCrd) btnCrd.classList.add("active");
+        if (btnTbl) btnTbl.classList.remove("active");
+        localStorage.setItem("dashboard_view_pref", "cards");
+      } else {
+        if (tbl) tbl.style.display = "block";
+        if (crd) crd.style.display = "none";
+        if (btnTbl) btnTbl.classList.add("active");
+        if (btnCrd) btnCrd.classList.remove("active");
+        localStorage.setItem("dashboard_view_pref", "table");
+      }
+    }
+
+    // Auto-detect view on load (mobile defaults to Cards)
+    document.addEventListener("DOMContentLoaded", function() {
+      const savedPref = localStorage.getItem("dashboard_view_pref");
+      if (savedPref) {
+        switchView(savedPref);
+      } else if (window.innerWidth <= 768) {
+        switchView("cards");
+      }
+    });
+
+    function openTokenModal() {
+      document.getElementById("tokenModal").style.display = "flex";
+    }
+    function closeTokenModal() {
+      document.getElementById("tokenModal").style.display = "none";
+    }
+    async function saveBloggerToken() {
+      const token = document.getElementById("bloggerTokenInput").value.trim();
+      if(!token) return alert("Please paste an Access Token.");
+      try {
+        const res = await fetch("/api/save-token", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({token: token})
+        });
+        const data = await res.json();
+        if(data.success) {
+          alert("🎉 Blogger API Token saved successfully! Now your drafts will push directly to Blogger.");
+          closeTokenModal();
+          location.reload();
+        } else {
+          alert("Failed to save: " + data.error);
+        }
+      } catch(e) {
+        alert("Error: " + e.message);
+      }
+    }
+    function refreshDashboard() {
+      const icon = document.getElementById("refreshIcon");
+      if (icon) icon.classList.add("fa-spin");
+      location.reload();
+    }
+
+    async function directPublish(id, btn) {
+      if(!confirm(`⚡ 1-CLICK DIRECT PUBLISH for Job #${id}?\n\nThis will automatically:\n1. Scrape & generate AI post + HD Thumbnail\n2. Create Blogger draft\n3. Publish LIVE to Blogger with clean custom SEO URL (recruitment-2026)\n4. Send push notification to Android app users\n\nAre you sure you want to proceed?`)) return;
+
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.style.opacity = "0.7";
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Auto Publishing...';
+
+      try {
+        const res = await fetch(`/api/direct-publish/${id}`, {method: "POST"});
+        const data = await res.json();
+        if(data.success) {
+          const liveUrl = data.url || data.blogger_url || '';
+          let msg = `🎉 SUCCESS! Job #${id} PUBLISHED LIVE to Blogger!\n\nSlug: ${data.slug || ''}\nURL: ${liveUrl}`;
+          alert(msg);
+          if(liveUrl) {
+            window.open(liveUrl, '_blank');
+          }
+          location.reload();
+        } else {
+          alert("❌ Direct Publish Failed: " + (data.error || "Unknown error"));
+          btn.disabled = false;
+          btn.style.opacity = "1";
+          btn.innerHTML = origHtml;
+        }
+      } catch(e) {
+        alert("❌ Error: " + e.message);
+        btn.disabled = false;
+        btn.style.opacity = "1";
+        btn.innerHTML = origHtml;
+      }
+    }
+
+    async function triggerDateScan() {
+      const dateVal = document.getElementById("scanDate").value;
+      const btn = document.getElementById("btnScan") || event.target;
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...';
+      try {
+        const res = await fetch("/api/scan", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({date: dateVal})
+        });
+        const data = await res.json();
+        if(data.success) {
+          alert(`✅ Discovered ${data.count} new notifications!`);
+          location.reload();
+        } else {
+          alert("Scan Error: " + data.error);
+        }
+      } catch(e) {
+        alert("Error: " + e.message);
+      } finally {
+        btn.innerHTML = '<i class="fas fa-search"></i> Scan FreeJobAlert';
+      }
+    }
+
+    async function triggerCustomJob() {
+      const url = document.getElementById("customUrl").value.trim();
+      if(!url) return alert("Please paste a URL first.");
+      try {
+        const res = await fetch("/api/add-custom-job", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({url: url})
+        });
+        const data = await res.json();
+        if(data.success) {
+          alert("🎉 Job generated and saved as Draft!");
+          location.reload();
+        } else {
+          alert("Error: " + data.error);
+        }
+      } catch(e) {
+        alert("Error: " + e.message);
+      }
+    }
+
+    async function processJob(id) {
+      try {
+        const res = await fetch(`/api/process/${id}`, {method: "POST"});
+        const data = await res.json();
+        if(data.success) {
+          location.reload();
+        } else {
+          alert("Failed: " + data.error);
+        }
+      } catch(e) {
+        alert("Error: " + e.message);
+      }
+    }
+
+    async function createDraft(id) {
+      if(!confirm(`📝 Create Job #${id} as a DRAFT on Blogger? (This will NOT send any notifications to users)`)) return;
+      try {
+        const res = await fetch(`/api/create-draft/${id}`, {method: "POST"});
+        const data = await res.json();
+        if(data.success) {
+          alert("✅ Post successfully created as DRAFT on Blogger!");
+          location.reload();
+        } else {
+          alert("Draft creation failed: " + data.error);
+        }
+      } catch(e) {
+        alert("Error: " + e.message);
+      }
+    }
+
+    async function publishLive(id) {
+      if(!confirm(`⚠️ Are you sure you want to PUBLISH Job #${id} LIVE on Blogger?\n\nExisting Apps Script will immediately detect the RSS feed and send push notifications to all Android App users!`)) return;
+      try {
+        const res = await fetch(`/api/publish/${id}`, {method: "POST"});
+        const data = await res.json();
+        if(data.success) {
+          const liveUrl = data.url || data.blogger_url || '';
+          alert("🚀 Post PUBLISHED LIVE to Blogger!" + (liveUrl ? `\n\nURL: ${liveUrl}` : ''));
+          if(liveUrl) window.open(liveUrl, '_blank');
+          location.reload();
+        } else {
+          alert("Publish failed: " + data.error);
+        }
+      } catch(e) {
+        alert("Error: " + e.message);
+      }
+    }
+
+    async function previewJob(id) {
+      try {
+        const res = await fetch(`/api/preview/${id}`);
+        const data = await res.json();
+        if(data.success) {
+          document.getElementById("modalTitle").innerText = data.title;
+          document.getElementById("modalMeta").innerHTML = `Labels: <b>${data.labels}</b> | Validation Score: <b>${data.validation_score}/100</b>`;
+          document.getElementById("modalHtml").innerHTML = data.content;
+          document.getElementById("previewModal").style.display = "flex";
+        }
+      } catch(e) {
+        alert("Preview Error: " + e.message);
+      }
+    }
+
+    function closeModal() {
+      document.getElementById("previewModal").style.display = "none";
+    }
+  </script>
+</body>
+</html>

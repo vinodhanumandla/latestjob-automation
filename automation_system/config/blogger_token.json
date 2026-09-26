@@ -1,0 +1,10 @@
+{
+  "access_token": "ya29.a0AdMD6EjqMEm2GsgoU_QjyWYVjdvHPKBKeVnaj5d_N3CZJ2pZ2IRjlhyaZ86dwE-GD9hBETK2h97L_Wa3MI3BC6_XaPyHqDVSqHNCSXYawIvbTDhFbCbeaE4keKvGvvKAS0ZIwC6ysjbIGbqOh5SuV23_Er8TBYo2jt3U1i-qsMakURW7Xj9M3QWCV6OzvfhP_g_P9Y31aCgYKATwSARMSFQHGX2MiEvR3EdnGtx4XLkCG3H0niA0207",
+  "refresh_token": "1//0g_KoAoZcRw1DCgYIARAAGBASNwF-L9IrATRd2BsKMg8esSV5a6Ky2HgSPqe8iEpYvvK_WE4HPcSJx8AlAh5P5mwc7NqmCJJ-K7Q",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "client_id": "502978836230-9738htcja1a594g6sv2gdvr693qvphp4.apps.googleusercontent.com",
+  "client_secret": "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",
+  "scopes": [
+    "https://www.googleapis.com/auth/blogger"
+  ]
+}

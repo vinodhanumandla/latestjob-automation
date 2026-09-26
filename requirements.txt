@@ -1,0 +1,9 @@
+flask
+requests
+beautifulsoup4
+lxml
+Pillow
+pytz
+google-auth-oauthlib
+google-api-python-client
+gunicorn
