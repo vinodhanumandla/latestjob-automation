@@ -131,20 +131,44 @@ class ThumbnailGenerator:
         sector: str,
     ) -> str:
         theme = SECTOR_THEMES.get(sector, SECTOR_THEMES["uniform"])
-        clean_org = organization.strip().upper()
+        import datetime as _dt
+        year = _dt.datetime.now().year
+
+        # Build the 3-line info text exactly as user specified:
+        #   Line 1: "<Organisation> released Notification <YYYY>"
+        #   Line 2: "Number of posts: <N>"
+        #   Line 3: "Last date: <DD-MM-YYYY>"
+        clean_org = organization.strip()
         paren_match = re.search(r'\(([^)]+)\)', organization)
-        if paren_match and len(paren_match.group(1)) <= 22:
-            short_org = paren_match.group(1).upper()
+        if paren_match and len(paren_match.group(1)) <= 25:
+            display_org = paren_match.group(1).strip()
         else:
-            short_org = clean_org[:30] + "..." if len(clean_org) > 30 else clean_org
+            display_org = clean_org[:35] + "..." if len(clean_org) > 35 else clean_org
+
+        vac_digits = re.search(r'\d+', str(vacancies))
+        vac_num = vac_digits.group(0) if vac_digits else "Various"
+
+        # Ensure last_date is in DD-MM-YYYY format
+        ld_clean = last_date.strip() if last_date and last_date.lower() not in ["refer notification", ""] else ""
+        # Try to normalise to DD-MM-YYYY
+        if ld_clean:
+            parts = re.split(r'[\-/.]', ld_clean)
+            if len(parts) == 3:
+                d, m, y = parts[0].zfill(2), parts[1].zfill(2), parts[2]
+                if len(y) == 2:
+                    y = "20" + y
+                ld_clean = f"{d}-{m}-{y}"
+
+        line1 = f"{display_org} released Notification {year}"
+        line2 = f"Number of posts: {vac_num}"
+        line3 = f"Last date: {ld_clean}" if ld_clean else f"Last date: Check Notification"
+
         clean_post = re.sub(
             r'[-\u2013\u2014]\s*\d+[\+\s\w]*POSTS?.*$', '', post_name, flags=re.IGNORECASE
         ).strip().upper()
         if len(clean_post) > 55:
             clean_post = clean_post[:52] + "..."
-        vac_digits = re.search(r'\d+', str(vacancies))
-        vac_num = vac_digits.group(0) if vac_digits else "VARIOUS"
-        qual_short = qualification[:55] if qualification else "10th / 12th / Graduation"
+
         loc_str = location.upper() if location else "ALL INDIA"
 
         return (
@@ -157,31 +181,29 @@ class ThumbnailGenerator:
             f"BACKGROUND:\n"
             f"- {theme['bg_colors']}\n"
             f"- Subtle decorative: {theme['icons']}\n\n"
-            f"LEFT SIDE (55-60% of image width) - TEXT CONTENT AREA:\n"
-            f"1. ORGANIZATION NAME: \"{short_org}\" in very large (72pt+) bold white Impact/Arial Black font at top\n"
-            f"2. YELLOW BANNER: \"RECRUITMENT 2026\" text in large bold gold/amber font on a dark navy horizontal strip\n"
-            f"3. POST NAME: \"{clean_post}\" in large bold (40pt+) dark or white text below\n"
-            f"4. NOTIFICATION BADGE: Bright yellow rounded rectangle with megaphone icon + \"NOTIFICATION OUT\" text in red\n"
-            f"5. VACANCY CIRCLE: Large dark navy circle with thick {theme['badge_color']} outline ring, "
-            f"containing \"{vac_num}\" number in huge bold white font, and \"POSTS\" text below it\n"
-            f"6. DATE INFO: Calendar icon + \"LAST DATE: {last_date}\" in bold dark text on white/cream rounded background\n"
-            f"7. APPLY BUTTON: Dark navy blue rounded rectangle pill button with \"APPLY NOW \u25ba\" in white bold text\n\n"
-            f"RIGHT SIDE (40-45% of image width) - CHARACTER ILLUSTRATION:\n"
+            f"MAIN TEXT (center-left, must be LARGE and perfectly readable):\n"
+            f"Display the following 3 lines of text PROMINENTLY on the thumbnail in bold clear fonts:\n"
+            f"  LINE 1 (very large bold white font, 68pt+): \"{line1}\"\n"
+            f"  LINE 2 (large bold yellow/gold font, 48pt+): \"{line2}\"\n"
+            f"  LINE 3 (large bold red font, 48pt+): \"{line3}\"\n\n"
+            f"ADDITIONAL TEXT ELEMENTS:\n"
+            f"- POST NAME badge: \"{clean_post}\" in medium bold white text on a dark navy rounded strip below\n"
+            f"- NOTIFICATION badge: bright yellow pill button with megaphone icon + \"NOTIFICATION OUT\" text\n"
+            f"- APPLY NOW button: dark navy rounded pill with \"APPLY NOW \u25ba\" in white bold\n\n"
+            f"RIGHT SIDE (40% of image width) - CHARACTER ILLUSTRATION:\n"
             f"- {theme['character']}\n"
-            f"- Characters realistic, friendly, confident, clearly Indian professionals\n"
-            f"- Circular frame or placed naturally against the themed background\n\n"
-            f"SMALL QUALIFICATION TEXT (bottom left, small readable font):\n"
-            f"Qualification: {qual_short} | Location: {loc_str}\n\n"
-            f"FOOTER STRIP (narrow dark strip at very bottom edge):\n"
-            f"- Left: globe icon + \"www.latestjobnotifications.online\" in white\n"
+            f"- Characters realistic, friendly, confident, clearly Indian professionals\n\n"
+            f"FOOTER STRIP (narrow dark strip at very bottom):\n"
+            f"- Left: \"www.latestjobnotifications.online\" in white\n"
             f"- Right: \"100% VERIFIED OFFICIAL RECRUITMENT\" in gold/yellow\n\n"
+            f"LOCATION: {loc_str}\n\n"
             f"MANDATORY RULES:\n"
-            f"- ALL TEXT must be perfectly sharp, clear, readable - zero blur or distortion\n"
-            f"- English text only, no spelling errors\n"
+            f"- The 3 main text lines MUST be perfectly sharp, bold, large, and clearly readable\n"
+            f"- No text blur, distortion, or spelling errors\n"
+            f"- English text only\n"
             f"- No watermarks or third-party logos\n"
             f"- Ultra high quality, premium professional appearance\n"
-            f"- Bright vibrant colors that stand out as social media thumbnails\n"
-            f"- Characters look like realistic Indian professionals, not cartoons"
+            f"- Bright vibrant colors that stand out as social media thumbnails"
         )
 
     def _generate_with_gemini_api(self, prompt: str):
@@ -190,10 +212,12 @@ class ThumbnailGenerator:
             return None
         import requests
         candidate_models = [
+            "gemini-2.0-flash-preview-image-generation",
+            "gemini-2.5-flash-preview-05-20",
             "gemini-2.5-flash-image",
+            "gemini-2.0-flash-exp-image-generation",
             "gemini-3.1-flash-image-preview",
             "gemini-3.1-flash-image",
-            "gemini-3-pro-image-preview",
         ]
         for model in candidate_models:
             try:
@@ -371,64 +395,82 @@ class ThumbnailGenerator:
             except Exception as ex:
                 logger.warning(f"Cutout paste failed: {ex}")
 
-        # 3. Typography (Left Side)
+        # 3. Typography (Left Side) — 3-line format
         draw = ImageDraw.Draw(base)
-        f_org = self._get_font("impact", 62)
-        f_rec = self._get_font("impact", 52)
-        f_post = self._get_font("arial", 28, bold=True)
-        f_badge = self._get_font("impact", 24)
-        f_dates_lbl = self._get_font("arial", 20, bold=True)
-        f_date_val = self._get_font("impact", 28)
+        import datetime as _dt
+        year = _dt.datetime.now().year
+
+        f_line1 = self._get_font("impact", 52)   # Line 1: Org released Notification YYYY
+        f_line2 = self._get_font("impact", 42)   # Line 2: Number of posts: N
+        f_line3 = self._get_font("impact", 42)   # Line 3: Last date: DD-MM-YYYY
+        f_post = self._get_font("arial", 24, bold=True)
+        f_badge = self._get_font("impact", 22)
         f_btn = self._get_font("arial", 20, bold=True)
-        f_card_vac = self._get_font("impact", 50)
-        f_card_sub = self._get_font("arial", 20, bold=True)
+        f_card_vac = self._get_font("impact", 46)
+        f_card_sub = self._get_font("arial", 18, bold=True)
 
-        # Organization Name
-        clean_org = organization.strip().upper()
+        # Build 3-line text
+        clean_org = organization.strip()
         pm = re.search(r'\(([^)]+)\)', clean_org)
-        if pm and len(pm.group(1)) <= 18:
-            short_org = pm.group(1).upper()
+        if pm and len(pm.group(1)) <= 20:
+            display_org = pm.group(1).strip()
         else:
-            short_org = clean_org[:32] + "..." if len(clean_org) > 32 else clean_org
+            display_org = clean_org[:30] + "..." if len(clean_org) > 30 else clean_org
 
-        draw.text((43, 43), short_org, fill=(4, 11, 26), font=f_org)
-        draw.text((40, 40), short_org, fill="#ffffff", font=f_org)
+        vn_d = re.search(r'\d+', str(vacancies))
+        vac_num_str = vn_d.group(0) if vn_d else "Various"
 
-        # RECRUITMENT 2026
-        draw.text((43, 118), "RECRUITMENT 2026", fill=(146, 64, 14), font=f_rec)
-        draw.text((40, 115), "RECRUITMENT 2026", fill="#fbbf24", font=f_rec)
+        ld_pil = last_date.strip() if last_date and last_date.lower() not in ["refer notification", ""] else ""
+        if ld_pil:
+            parts = re.split(r'[\-/.]', ld_pil)
+            if len(parts) == 3:
+                dp, mp, yp = parts[0].zfill(2), parts[1].zfill(2), parts[2]
+                if len(yp) == 2: yp = "20" + yp
+                ld_pil = f"{dp}-{mp}-{yp}"
 
-        # Post Name
+        text_line1 = f"{display_org} released Notification {year}"
+        text_line2 = f"Number of posts: {vac_num_str}"
+        text_line3 = f"Last date: {ld_pil}" if ld_pil else "Last date: Check Notification"
+
+        # Draw Line 1 — white bold
+        draw.text((43, 43), text_line1, fill=(4, 11, 26), font=f_line1)  # shadow
+        draw.text((40, 40), text_line1, fill="#ffffff", font=f_line1)
+
+        # Draw Line 2 — gold/yellow
+        draw.text((43, 108), text_line2, fill=(146, 64, 14), font=f_line2)  # shadow
+        draw.text((40, 105), text_line2, fill="#fbbf24", font=f_line2)
+
+        # Draw Line 3 — red
+        draw.text((43, 165), text_line3, fill=(100, 0, 0), font=f_line3)  # shadow
+        draw.text((40, 162), text_line3, fill="#dc2626", font=f_line3)
+
+        # Post Name below
         clean_post = re.sub(r'[-\u2013\u2014]\s*\d+[\+\s\w]*POSTS?.*$', '', post_name, flags=re.IGNORECASE).strip().upper()
         if len(clean_post) > 36:
             words = clean_post.split(" ")
-            line1, line2 = "", ""
+            post_l1, post_l2 = "", ""
             for w in words:
-                if len(line1 + " " + w) <= 32:
-                    line1 = (line1 + " " + w).strip()
+                if len(post_l1 + " " + w) <= 32:
+                    post_l1 = (post_l1 + " " + w).strip()
                 else:
-                    line2 = (line2 + " " + w).strip()
-            post_lines = [line1, line2] if line2 else [line1]
+                    post_l2 = (post_l2 + " " + w).strip()
+            post_lines = [post_l1, post_l2] if post_l2 else [post_l1]
         else:
             post_lines = [clean_post]
 
-        py = 190
+        py = 220
         for pline in post_lines:
             if pline:
                 draw.text((42, py + 2), pline, fill=(4, 11, 26), font=f_post)
                 draw.text((40, py), pline, fill="#ffffff", font=f_post)
-                py += 38
+                py += 36
 
-        # Yellow Notification Badge
+        # Notification Badge
         badge_y = py + 12
-        draw.rounded_rectangle([(40, badge_y), (320, badge_y + 44)], radius=8, fill="#facc15", outline="#eab308", width=2)
-        draw.text((56, badge_y + 8), "📢 NOTIFICATION OUT", fill="#0f172a", font=f_badge)
+        draw.rounded_rectangle([(40, badge_y), (320, badge_y + 40)], radius=8, fill="#facc15", outline="#eab308", width=2)
+        draw.text((56, badge_y + 6), "NOTIFICATION OUT", fill="#0f172a", font=f_badge)
 
-        # 4. Bottom-Left Dates & Action Button
-        draw.text((40, 540), "IMPORTANT DATES:", fill="#334155", font=f_dates_lbl)
-        draw.rounded_rectangle([(40, 572), (390, 624)], radius=10, fill="#fef3c7", outline="#f59e0b", width=2)
-        draw.text((54, 580), f"LAST DATE: {last_date.upper()}", fill="#991b1b", font=f_date_val)
-
+        # Apply Now Button
         draw.rounded_rectangle([(40, 640), (220, 688)], radius=22, fill="#0f172a", outline="#3b82f6", width=2)
         draw.text((68, 652), "APPLY NOW >>", fill="#ffffff", font=f_btn)
 

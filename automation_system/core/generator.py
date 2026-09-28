@@ -76,7 +76,9 @@ class ContentGenerator:
         qualification = (extracted.get("qualification") or job_data.get("qualification") or "Relevant Degree / Diploma / 10th / 12th").strip()
         age_limit = (extracted.get("age_limit") or "As per Government Rules (Refer to official notice)").strip()
         fee = (extracted.get("application_fee") or "Check official notification").strip()
-        last_date = (extracted.get("last_date") or job_data.get("last_date") or "Refer Notification").strip()
+        last_date = (extracted.get("last_date") or job_data.get("last_date") or "").strip()
+        if not last_date or last_date.lower() in ["refer notification", "–", "-", "n/a"]:
+            last_date = "Check Official Notification"
         apply_mode = (extracted.get("apply_mode") or "Online").strip()
         job_type = (extracted.get("job_type") or "Regular / Contract").strip()
         
@@ -184,7 +186,7 @@ class ContentGenerator:
         org = p["org"]
         post_name = p["post_name"]
         vacancies = p["vacancies"]
-        advt_no = p["advt_no"] or "Refer Notification"
+        advt_no = p["advt_no"] or "Check Official Notification"
         salary = p["salary"]
         qualification = p["qualification"]
         age_limit = p["age_limit"]
