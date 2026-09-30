@@ -415,42 +415,35 @@ class ThumbnailGenerator:
         age_limit: str = "",
         sector: str = "uniform",
     ) -> bytes:
+        """
+        Sleek, high-contrast, modern recruitment thumbnail matching premium AI design:
+        - Deep navy corporate gradient background
+        - Clean Indian professional officers on right side
+        - Yellow NOTIFICATION OUT pill badge at top-left
+        - Prominent 3-line format:
+            Line 1: [Company] released Notification 2026 (Large White bold)
+            Line 2: Number of posts: [N] (Vibrant Gold bold)
+            Line 3: Last date: [DD-MM-YYYY] (Vibrant Red bold)
+        - Sleek APPLY NOW button
+        - Clean footer watermark
+        """
         W, H = 1280, 720
-        base = Image.new("RGBA", (W, H), (250, 252, 255, 255))
+        base = Image.new("RGB", (W, H), (10, 20, 45))
+        draw = ImageDraw.Draw(base)
 
-        # 1. Diagonal Navy Blue Gradient Wave
-        poly_pts = []
-        for x in range(W + 1):
-            prog = x / W
-            y_wave = 520 - 130 * (prog ** 0.8)
-            poly_pts.append((x, int(y_wave)))
-        poly_pts = [(0, 0), (W, 0), (W, poly_pts[-1][1])] + list(reversed(poly_pts))
+        # 1. Background gradient: deep navy left (#081226) to richer navy right (#132247)
+        for x in range(W):
+            factor = x / W
+            r = int(8 + factor * 11)
+            g = int(18 + factor * 16)
+            b = int(38 + factor * 33)
+            draw.line([(x, 0), (x, H)], fill=(r, g, b))
 
-        navy_grad = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        d_grad = ImageDraw.Draw(navy_grad)
-        for y in range(540):
-            factor = y / 540.0
-            r = int(8 + factor * 14)
-            g = int(24 + factor * 36)
-            b = int(60 + factor * 76)
-            d_grad.line([(0, y), (W, y)], fill=(r, g, b, 255))
+        # Right side subtle geometric diagonal accent
+        poly_pts = [(int(W * 0.55), 0), (W, 0), (W, H), (int(W * 0.45), H)]
+        draw.polygon(poly_pts, fill=(16, 32, 68))
 
-        wave_mask = Image.new("L", (W, H), 0)
-        d_mask = ImageDraw.Draw(wave_mask)
-        d_mask.polygon(poly_pts, fill=255)
-        base.paste(navy_grad, (0, 0), wave_mask)
-
-        # Golden accent divider line
-        d_base = ImageDraw.Draw(base)
-        curve_pts = []
-        for x in range(0, W + 1, 4):
-            prog = x / W
-            y_wave = 520 - 130 * (prog ** 0.8)
-            curve_pts.append((x, int(y_wave)))
-        for i in range(len(curve_pts) - 1):
-            d_base.line([curve_pts[i], curve_pts[i+1]], fill=(245, 158, 11, 235), width=4)
-
-        # 2. Sector Illustrated Cutout Character
+        # 2. Sector Illustrated Cutout Character on right side
         cutout_name = f"{sector}_cutout.png"
         cutout_path = self.assets_dir / cutout_name
         if not cutout_path.exists():
@@ -459,40 +452,51 @@ class ThumbnailGenerator:
         if cutout_path.exists():
             try:
                 char = Image.open(cutout_path).convert("RGBA")
-                target_h = 670
+                target_h = 660
                 target_w = int(char.width * (target_h / char.height))
                 char_resized = char.resize((target_w, target_h), Image.Resampling.LANCZOS)
                 pos_x = W - target_w + 30
-                pos_y = H - target_h - 5
+                pos_y = H - target_h
                 base.paste(char_resized, (pos_x, pos_y), char_resized)
             except Exception as ex:
                 logger.warning(f"Cutout paste failed: {ex}")
 
-        # 3. Typography (Left Side) — 3-line format
+        # 3. Typography
         draw = ImageDraw.Draw(base)
         import datetime as _dt
         year = _dt.datetime.now().year
 
-        f_line1 = self._get_font("impact", 52)   # Line 1: Org released Notification YYYY
-        f_line2 = self._get_font("impact", 42)   # Line 2: Number of posts: N
-        f_line3 = self._get_font("impact", 42)   # Line 3: Last date: DD-MM-YYYY
-        f_post = self._get_font("arial", 24, bold=True)
-        f_badge = self._get_font("impact", 22)
-        f_btn = self._get_font("arial", 20, bold=True)
-        f_card_vac = self._get_font("impact", 46)
-        f_card_sub = self._get_font("arial", 18, bold=True)
+        f_line1 = self._get_font("impact", 54, bold=True)
+        f_line2 = self._get_font("impact", 50, bold=True)
+        f_line3 = self._get_font("impact", 50, bold=True)
+        f_badge = self._get_font("arial", 24, bold=True)
+        f_btn = self._get_font("arial", 24, bold=True)
+        f_footer = self._get_font("arial", 18, bold=False)
+
+        # NOTIFICATION OUT badge (Top Left)
+        bw, bh = 240, 50
+        draw.rounded_rectangle([(60, 48), (60 + bw, 48 + bh)], radius=12, fill="#FACC15")
+        draw.text((75, 60), "NOTIFICATION OUT", fill="#0A0F1D", font=f_badge)
 
         # Build 3-line text
         clean_org = organization.strip()
         pm = re.search(r'\(([^)]+)\)', clean_org)
-        if pm and len(pm.group(1)) <= 20:
+        if pm and len(pm.group(1)) <= 22:
             display_org = pm.group(1).strip()
         else:
-            display_org = clean_org[:30] + "..." if len(clean_org) > 30 else clean_org
+            display_org = clean_org[:28] + "..." if len(clean_org) > 28 else clean_org
 
-        vn_d = re.search(r'\d+', str(vacancies))
-        vac_num_str = vn_d.group(0) if vn_d else "Various"
+        # Parse vacancy cleanly with commas
+        vac_clean = re.sub(r'[^\d]', '', str(vacancies))
+        if vac_clean:
+            try:
+                vac_num_str = f"{int(vac_clean):,}"
+            except Exception:
+                vac_num_str = vac_clean
+        else:
+            vac_num_str = "Various"
 
+        # Format last date
         ld_pil = last_date.strip() if last_date and last_date.lower() not in ["refer notification", ""] else ""
         if ld_pil:
             parts = re.split(r'[\-/.]', ld_pil)
@@ -501,72 +505,39 @@ class ThumbnailGenerator:
                 if len(yp) == 2: yp = "20" + yp
                 ld_pil = f"{dp}-{mp}-{yp}"
 
-        text_line1 = f"{display_org} released Notification {year}"
+        # Draw Line 1 (Two rows for perfect readability)
+        y_pos = 135
+        l1_p1 = f"{display_org} released"
+        l1_p2 = f"Notification {year}"
+        draw.text((63, y_pos + 3), l1_p1, fill=(2, 6, 16), font=f_line1)
+        draw.text((60, y_pos), l1_p1, fill="#FFFFFF", font=f_line1)
+        y_pos += 68
+        draw.text((63, y_pos + 3), l1_p2, fill=(2, 6, 16), font=f_line1)
+        draw.text((60, y_pos), l1_p2, fill="#FFFFFF", font=f_line1)
+
+        # Draw Line 2: Number of posts: [N] (Gold)
+        y_pos += 92
         text_line2 = f"Number of posts: {vac_num_str}"
+        draw.text((63, y_pos + 3), text_line2, fill=(120, 53, 15), font=f_line2)
+        draw.text((60, y_pos), text_line2, fill="#FBBF24", font=f_line2)
+
+        # Draw Line 3: Last date: [Date] (Red)
+        y_pos += 82
         text_line3 = f"Last date: {ld_pil}" if ld_pil else "Last date: Check Notification"
+        draw.text((63, y_pos + 3), text_line3, fill=(110, 15, 15), font=f_line3)
+        draw.text((60, y_pos), text_line3, fill="#EF4444", font=f_line3)
 
-        # Draw Line 1 — white bold
-        draw.text((43, 43), text_line1, fill=(4, 11, 26), font=f_line1)  # shadow
-        draw.text((40, 40), text_line1, fill="#ffffff", font=f_line1)
+        # APPLY NOW Button below
+        btn_x, btn_y, btn_w, btn_h = 60, y_pos + 95, 230, 58
+        draw.rounded_rectangle([(btn_x, btn_y), (btn_x + btn_w, btn_y + btn_h)], radius=29, fill="#0B1528", outline="#FFFFFF", width=3)
+        draw.text((btn_x + 48, btn_y + 13), "APPLY NOW", fill="#FFFFFF", font=f_btn)
 
-        # Draw Line 2 — gold/yellow
-        draw.text((43, 108), text_line2, fill=(146, 64, 14), font=f_line2)  # shadow
-        draw.text((40, 105), text_line2, fill="#fbbf24", font=f_line2)
-
-        # Draw Line 3 — red
-        draw.text((43, 165), text_line3, fill=(100, 0, 0), font=f_line3)  # shadow
-        draw.text((40, 162), text_line3, fill="#dc2626", font=f_line3)
-
-        # Post Name below
-        clean_post = re.sub(r'[-\u2013\u2014]\s*\d+[\+\s\w]*POSTS?.*$', '', post_name, flags=re.IGNORECASE).strip().upper()
-        if len(clean_post) > 36:
-            words = clean_post.split(" ")
-            post_l1, post_l2 = "", ""
-            for w in words:
-                if len(post_l1 + " " + w) <= 32:
-                    post_l1 = (post_l1 + " " + w).strip()
-                else:
-                    post_l2 = (post_l2 + " " + w).strip()
-            post_lines = [post_l1, post_l2] if post_l2 else [post_l1]
-        else:
-            post_lines = [clean_post]
-
-        py = 220
-        for pline in post_lines:
-            if pline:
-                draw.text((42, py + 2), pline, fill=(4, 11, 26), font=f_post)
-                draw.text((40, py), pline, fill="#ffffff", font=f_post)
-                py += 36
-
-        # Notification Badge
-        badge_y = py + 12
-        draw.rounded_rectangle([(40, badge_y), (320, badge_y + 40)], radius=8, fill="#facc15", outline="#eab308", width=2)
-        draw.text((56, badge_y + 6), "NOTIFICATION OUT", fill="#0f172a", font=f_badge)
-
-        # Apply Now Button
-        draw.rounded_rectangle([(40, 640), (220, 688)], radius=22, fill="#0f172a", outline="#3b82f6", width=2)
-        draw.text((68, 652), "APPLY NOW >>", fill="#ffffff", font=f_btn)
-
-        # 5. Floating Vacancies Card on Bottom Right
-        card_w, card_h = 420, 120
-        card_x = W - card_w - 40
-        card_y = H - card_h - 25
-
-        draw.rounded_rectangle([(card_x + 5, card_y + 5), (card_x + card_w + 5, card_y + card_h + 5)], radius=16, fill=(0, 0, 0, 40))
-        draw.rounded_rectangle([(card_x, card_y), (card_x + card_w, card_y + card_h)], radius=16, fill="#ffffff", outline="#0f172a", width=3)
-
-        vn = re.search(r'\d+', str(vacancies))
-        vac_count = f"{vn.group(0)} VACANCIES" if vn else "MULTIPLE VACANCIES"
-        draw.text((card_x + 30, card_y + 12), vac_count, fill="#0f172a", font=f_card_vac)
-
-        sub_info = f"QUALIFICATION: {qualification[:24]}" if qualification else f"LOCATION: {location[:24]}"
-        draw.text((card_x + 32, card_y + 72), sub_info.upper(), fill="#1d4ed8", font=f_card_sub)
+        # Footer Watermark
+        draw.text((60, H - 35), "www.latestjobnotifications.online", fill=(148, 163, 184), font=f_footer)
 
         out = io.BytesIO()
-        base.convert("RGB").save(out, "JPEG", quality=95)
+        base.save(out, "JPEG", quality=95)
         return out.getvalue()
-
-    # â”€â”€ Main Entry Point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def generate_hd_thumbnail(
         self,
@@ -581,8 +552,8 @@ class ThumbnailGenerator:
     ):
         """
         Generates a 1280x720 professional thumbnail.
-        Primary: Gemini AI image generation (Delhi High Court illustrated style).
-        Fallback: Enhanced PIL rendering if AI unavailable.
+        Primary: Gemini AI image generation if API key has quota.
+        Fallback: Ultra-clean 3-line high-contrast renderer.
         Returns: (file_path: str, filename: str)
         """
         sector = self.detect_sector(organization, post_name)
@@ -593,9 +564,9 @@ class ThumbnailGenerator:
         file_path = self.output_dir / safe_filename
         img_bytes = None
 
-        # Try Gemini AI image generation first
+        # 1. Try Gemini AI image generation first (when billing is enabled)
         if self.api_key:
-            logger.info(f"AI thumbnail: {organization} | {post_name}")
+            logger.info(f"AI thumbnail attempt: {organization} | {post_name}")
             prompt = self._build_ai_prompt(
                 organization=organization,
                 post_name=post_name,
@@ -608,35 +579,10 @@ class ThumbnailGenerator:
             img_bytes = self._generate_with_gemini_api(prompt)
             if img_bytes:
                 img_bytes = self._resize_to_1280x720(img_bytes)
-                logger.info(f"AI thumbnail OK: {organization}")
-            else:
-                logger.warning("Gemini AI failed; trying Pollinations.ai...")
-                img_bytes = self._generate_with_pollinations(
-                    organization=organization,
-                    post_name=post_name,
-                    vacancies=vacancies,
-                    last_date=last_date,
-                    sector=sector,
-                )
-                if img_bytes:
-                    img_bytes = self._resize_to_1280x720(img_bytes)
-                    logger.info(f"Pollinations.ai thumbnail OK: {organization}")
+                logger.info(f"Gemini AI thumbnail OK: {organization}")
 
-        # Also try Pollinations if no api_key at all
-        if not img_bytes and not self.api_key:
-            img_bytes = self._generate_with_pollinations(
-                organization=organization,
-                post_name=post_name,
-                vacancies=vacancies,
-                last_date=last_date,
-                sector=sector,
-            )
-            if img_bytes:
-                img_bytes = self._resize_to_1280x720(img_bytes)
-
-        # PIL fallback if all AI unavailable or failed
+        # 2. Modern 3-line high-contrast renderer
         if not img_bytes:
-            logger.warning("All AI generation failed; using PIL fallback.")
             img_bytes = self._generate_pil_fallback(
                 organization=organization,
                 post_name=post_name,
@@ -653,66 +599,6 @@ class ThumbnailGenerator:
             fobj.write(img_bytes)
         logger.info(f"Saved thumbnail: {file_path}")
         return str(file_path), safe_filename
-
-    def _generate_with_pollinations(
-        self,
-        organization: str,
-        post_name: str,
-        vacancies: str,
-        last_date: str,
-        sector: str,
-    ):
-        """
-        Uses Pollinations.ai free AI image generation API.
-        No API key required. Returns image bytes or None.
-        """
-        try:
-            import requests as _req
-            import datetime as _dt
-            import urllib.parse
-
-            year = _dt.datetime.now().year
-            clean_org = organization.strip()
-            paren_match = re.search(r'\(([^)]+)\)', clean_org)
-            if paren_match and len(paren_match.group(1)) <= 25:
-                display_org = paren_match.group(1).strip()
-            else:
-                display_org = clean_org[:30] + "..." if len(clean_org) > 30 else clean_org
-
-            vac_digits = re.search(r'\d+', str(vacancies))
-            vac_num = vac_digits.group(0) if vac_digits else "Various"
-
-            ld = last_date.strip() if last_date and last_date.lower() not in ["refer notification", "check official notification", ""] else "Check Notification"
-
-            theme = SECTOR_THEMES.get(sector, SECTOR_THEMES["uniform"])
-
-            prompt = (
-                f"Professional Indian government job recruitment banner thumbnail, 1280x720, "
-                f"dark navy blue gradient background, large bold white text: '{display_org} released Notification {year}', "
-                f"large bold gold text below: 'Number of posts: {vac_num}', "
-                f"large bold red text below that: 'Last date: {ld}', "
-                f"Indian professional characters on right side: {theme['character']}, "
-                f"decorative elements: {theme['icons']}, "
-                f"footer text: 'www.latestjobnotifications.online', "
-                f"NOTIFICATION OUT badge in yellow, APPLY NOW button in navy, "
-                f"ultra HD, vibrant colors, premium professional design, no watermarks"
-            )
-
-            encoded = urllib.parse.quote(prompt)
-            url = f"https://image.pollinations.ai/prompt/{encoded}?width=1280&height=720&nologo=true&enhance=true"
-            logger.info(f"Pollinations.ai request for: {display_org}")
-            resp = _req.get(url, timeout=90)
-            if resp.status_code == 200 and len(resp.content) > 5000:
-                logger.info(f"Pollinations.ai image OK: {len(resp.content)} bytes")
-                return resp.content
-            else:
-                logger.warning(f"Pollinations.ai: HTTP {resp.status_code}, size={len(resp.content)}")
-                return None
-        except Exception as e:
-            logger.warning(f"Pollinations.ai error: {e}")
-            return None
-
-
 
 
 if __name__ == "__main__":
