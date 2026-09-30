@@ -145,8 +145,15 @@ class ThumbnailGenerator:
         else:
             display_org = clean_org[:35] + "..." if len(clean_org) > 35 else clean_org
 
-        vac_digits = re.search(r'\d+', str(vacancies))
-        vac_num = vac_digits.group(0) if vac_digits else "Various"
+        vac_clean = re.sub(r'[^\d]', '', str(vacancies))
+        if vac_clean:
+            # Format with commas for display
+            try:
+                vac_num = f"{int(vac_clean):,}"
+            except Exception:
+                vac_num = vac_clean
+        else:
+            vac_num = "Various"
 
         # Ensure last_date is in DD-MM-YYYY format
         ld_clean = last_date.strip() if last_date and last_date.lower() not in ["refer notification", ""] else ""
@@ -208,15 +215,47 @@ class ThumbnailGenerator:
 
     def _generate_with_gemini_api(self, prompt: str):
         if not self.api_key:
-            logger.warning("GEMINI_API_KEY not set. Using PIL fallback.")
+            logger.warning("GEMINI_API_KEY not set.")
             return None
         import requests as _req
-        # Models that support image generation (in order of preference)
+
+        # 1. Try Gemini Interactions API (official 2026 native image endpoint)
+        interactions_models = [
+            "gemini-3.1-flash-image",
+            "nano-banana-pro-preview",
+            "gemini-3-pro-image",
+            "gemini-3.1-flash-lite-image",
+        ]
+        interactions_url = f"https://generativelanguage.googleapis.com/v1beta/interactions?key={self.api_key}"
+        for model in interactions_models:
+            try:
+                headers = {"Content-Type": "application/json"}
+                payload = {"model": model, "input": prompt}
+                resp = _req.post(interactions_url, json=payload, headers=headers, timeout=90)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    # Check for output image data in interactions format
+                    for out_item in data.get("outputs", []):
+                        if isinstance(out_item, dict):
+                            raw_b64 = out_item.get("image", {}).get("data") or out_item.get("inlineData", {}).get("data")
+                            if raw_b64:
+                                logger.info(f"Gemini AI thumbnail OK via Interactions API ({model})")
+                                return base64.b64decode(raw_b64)
+                elif resp.status_code == 429:
+                    logger.warning(f"Gemini Interactions API {model}: Quota/Free Tier limit reached (429).")
+                    break  # If free tier limit 0, trying next model in same family will also be 429
+                elif resp.status_code == 401:
+                    logger.error("Gemini API key is invalid (401).")
+                    return None
+            except Exception as exc:
+                logger.warning(f"Interactions API {model} error: {exc}")
+
+        # 2. Try generateContent with native image models
         candidate_models = [
-            "gemini-2.0-flash-exp",
-            "gemini-2.0-flash-exp-image-generation",
-            "gemini-2.0-flash-preview-image-generation",
-            "gemini-2.5-flash-preview-05-20",
+            "gemini-3.1-flash-image",
+            "gemini-2.5-flash-image",
+            "gemini-3-pro-image",
+            "gemini-3.1-flash-lite-image",
         ]
         for model in candidate_models:
             try:
@@ -227,13 +266,13 @@ class ThumbnailGenerator:
                 payload = {
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {
-                        "responseModalities": ["IMAGE", "TEXT"]
+                        "responseModalities": ["IMAGE"]
                     },
                 }
                 resp = _req.post(
                     url, json=payload,
                     headers={"Content-Type": "application/json"},
-                    timeout=120,
+                    timeout=90,
                 )
                 if resp.status_code == 200:
                     data = resp.json()
@@ -242,19 +281,18 @@ class ThumbnailGenerator:
                             if "inlineData" in part:
                                 raw = part["inlineData"].get("data", "")
                                 if raw:
-                                    logger.info(f"Gemini AI thumbnail OK via {model}")
+                                    logger.info(f"Gemini AI thumbnail OK via generateContent ({model})")
                                     return base64.b64decode(raw)
-                    logger.warning(f"Gemini {model}: 200 OK but no image in response. Candidates: {len(data.get('candidates',[]))}")
+                elif resp.status_code == 429:
+                    logger.warning(f"Gemini generateContent {model}: Quota/Free Tier limit reached (429).")
+                    break
                 elif resp.status_code == 401:
-                    logger.error("Gemini API key is invalid (401). Set GEMINI_API_KEY env var in Render.")
-                    return None  # No point trying other models with invalid key
-                elif resp.status_code == 404:
-                    logger.warning(f"Gemini model {model} not found (404), trying next...")
-                else:
-                    logger.warning(f"Gemini {model}: HTTP {resp.status_code} - {resp.text[:200]}")
+                    logger.error("Gemini API key is invalid (401).")
+                    return None
             except Exception as exc:
-                logger.warning(f"Gemini {model} error: {exc}")
-        logger.warning("All Gemini models failed. Using PIL fallback.")
+                logger.warning(f"Gemini generateContent {model} error: {exc}")
+
+        logger.warning("Gemini AI image generation unavailable. Using fallback.")
         return None
 
     def _resize_to_1280x720(self, img_bytes: bytes) -> bytes:
@@ -306,6 +344,21 @@ class ThumbnailGenerator:
     # â”€â”€ PIL Fallback Renderer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _get_font(self, name: str, size: int, bold: bool = True):
+        # 1. Bundled assets fonts (cross-platform, works on Linux/Render and Windows)
+        bundled_bold = self.assets_dir / "Roboto-Bold.ttf"
+        bundled_reg = self.assets_dir / "Roboto-Regular.ttf"
+        if bold and bundled_bold.exists():
+            try:
+                return ImageFont.truetype(str(bundled_bold), size)
+            except Exception:
+                pass
+        elif not bold and bundled_reg.exists():
+            try:
+                return ImageFont.truetype(str(bundled_reg), size)
+            except Exception:
+                pass
+
+        # 2. Windows font candidates
         candidates = [
             f"c:/windows/fonts/{name}bd.ttf" if bold else f"c:/windows/fonts/{name}.ttf",
             f"c:/windows/fonts/{name}.ttf",
@@ -316,6 +369,18 @@ class ThumbnailGenerator:
             if os.path.exists(c):
                 try:
                     return ImageFont.truetype(c, size)
+                except Exception:
+                    pass
+
+        # 3. Linux system font candidates
+        linux_fonts = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        ]
+        for lf in linux_fonts:
+            if os.path.exists(lf):
+                try:
+                    return ImageFont.truetype(lf, size)
                 except Exception:
                     pass
         return ImageFont.load_default()
@@ -545,10 +610,33 @@ class ThumbnailGenerator:
                 img_bytes = self._resize_to_1280x720(img_bytes)
                 logger.info(f"AI thumbnail OK: {organization}")
             else:
-                logger.warning("AI generation failed; using PIL fallback.")
+                logger.warning("Gemini AI failed; trying Pollinations.ai...")
+                img_bytes = self._generate_with_pollinations(
+                    organization=organization,
+                    post_name=post_name,
+                    vacancies=vacancies,
+                    last_date=last_date,
+                    sector=sector,
+                )
+                if img_bytes:
+                    img_bytes = self._resize_to_1280x720(img_bytes)
+                    logger.info(f"Pollinations.ai thumbnail OK: {organization}")
 
-        # PIL fallback if AI unavailable or failed
+        # Also try Pollinations if no api_key at all
+        if not img_bytes and not self.api_key:
+            img_bytes = self._generate_with_pollinations(
+                organization=organization,
+                post_name=post_name,
+                vacancies=vacancies,
+                last_date=last_date,
+                sector=sector,
+            )
+            if img_bytes:
+                img_bytes = self._resize_to_1280x720(img_bytes)
+
+        # PIL fallback if all AI unavailable or failed
         if not img_bytes:
+            logger.warning("All AI generation failed; using PIL fallback.")
             img_bytes = self._generate_pil_fallback(
                 organization=organization,
                 post_name=post_name,
@@ -565,6 +653,66 @@ class ThumbnailGenerator:
             fobj.write(img_bytes)
         logger.info(f"Saved thumbnail: {file_path}")
         return str(file_path), safe_filename
+
+    def _generate_with_pollinations(
+        self,
+        organization: str,
+        post_name: str,
+        vacancies: str,
+        last_date: str,
+        sector: str,
+    ):
+        """
+        Uses Pollinations.ai free AI image generation API.
+        No API key required. Returns image bytes or None.
+        """
+        try:
+            import requests as _req
+            import datetime as _dt
+            import urllib.parse
+
+            year = _dt.datetime.now().year
+            clean_org = organization.strip()
+            paren_match = re.search(r'\(([^)]+)\)', clean_org)
+            if paren_match and len(paren_match.group(1)) <= 25:
+                display_org = paren_match.group(1).strip()
+            else:
+                display_org = clean_org[:30] + "..." if len(clean_org) > 30 else clean_org
+
+            vac_digits = re.search(r'\d+', str(vacancies))
+            vac_num = vac_digits.group(0) if vac_digits else "Various"
+
+            ld = last_date.strip() if last_date and last_date.lower() not in ["refer notification", "check official notification", ""] else "Check Notification"
+
+            theme = SECTOR_THEMES.get(sector, SECTOR_THEMES["uniform"])
+
+            prompt = (
+                f"Professional Indian government job recruitment banner thumbnail, 1280x720, "
+                f"dark navy blue gradient background, large bold white text: '{display_org} released Notification {year}', "
+                f"large bold gold text below: 'Number of posts: {vac_num}', "
+                f"large bold red text below that: 'Last date: {ld}', "
+                f"Indian professional characters on right side: {theme['character']}, "
+                f"decorative elements: {theme['icons']}, "
+                f"footer text: 'www.latestjobnotifications.online', "
+                f"NOTIFICATION OUT badge in yellow, APPLY NOW button in navy, "
+                f"ultra HD, vibrant colors, premium professional design, no watermarks"
+            )
+
+            encoded = urllib.parse.quote(prompt)
+            url = f"https://image.pollinations.ai/prompt/{encoded}?width=1280&height=720&nologo=true&enhance=true"
+            logger.info(f"Pollinations.ai request for: {display_org}")
+            resp = _req.get(url, timeout=90)
+            if resp.status_code == 200 and len(resp.content) > 5000:
+                logger.info(f"Pollinations.ai image OK: {len(resp.content)} bytes")
+                return resp.content
+            else:
+                logger.warning(f"Pollinations.ai: HTTP {resp.status_code}, size={len(resp.content)}")
+                return None
+        except Exception as e:
+            logger.warning(f"Pollinations.ai error: {e}")
+            return None
+
+
 
 
 if __name__ == "__main__":
