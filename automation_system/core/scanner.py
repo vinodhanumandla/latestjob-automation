@@ -14,6 +14,10 @@ import pytz
 from automation_system.config.config import FREEJOBALERT_LATEST_URL, REQUEST_HEADERS, TIMEZONE
 from automation_system.database.db import get_db_connection, get_current_ist_time
 from automation_system.core.location_detector import detect_job_location
+try:
+    from automation_system.core.pdf_extractor import extract_pdf_data
+except Exception:
+    def extract_pdf_data(url): return {}
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +326,48 @@ class JobScanner:
                 extracted_location=data["job_location"]
             )
             data["job_location"] = detected_loc
+
+        # ── PDF Deep Extraction ─────────────────────────────────────────
+        # If official PDF URL found, download & extract to fill any missing fields
+        if data.get("official_pdf_url"):
+            try:
+                logger.info(f"Extracting data from PDF: {data['official_pdf_url']}")
+                pdf_data = extract_pdf_data(data["official_pdf_url"])
+                # Fill missing fields from PDF (PDF takes priority for key fields)
+                for field in ["salary", "qualification", "age_limit", "apply_mode",
+                               "job_type", "advt_no"]:
+                    if pdf_data.get(field) and not data.get(field):
+                        data[field] = pdf_data[field]
+                # Total vacancies: prefer PDF if HTML was empty
+                if pdf_data.get("total_vacancies") and not data.get("total_vacancies"):
+                    data["total_vacancies"] = pdf_data["total_vacancies"]
+                # Last date: PDF wins if HTML had empty/generic value
+                if pdf_data.get("last_date") and (not data.get("last_date") or
+                        data["last_date"].lower() in ["", "refer notification", "-", "n/a"]):
+                    data["last_date"] = pdf_data["last_date"]
+                # Vacancy breakup: merge
+                if pdf_data.get("vacancy_breakup") and not data.get("vacancy_breakup"):
+                    data["vacancy_breakup"] = pdf_data["vacancy_breakup"]
+                # Dates breakup: merge unique events
+                if pdf_data.get("dates_breakup"):
+                    existing_events = {d["event"] for d in data.get("dates_breakup", [])}
+                    for d in pdf_data["dates_breakup"]:
+                        if d["event"] not in existing_events:
+                            data.setdefault("dates_breakup", []).append(d)
+                            existing_events.add(d["event"])
+                # Fee breakup: use PDF data if HTML had none
+                if pdf_data.get("fee_breakup") and not data.get("fee_breakup"):
+                    data["fee_breakup"] = pdf_data["fee_breakup"]
+                if pdf_data.get("application_fee") and not data.get("application_fee"):
+                    data["application_fee"] = pdf_data["application_fee"]
+                # Official URLs from PDF
+                if pdf_data.get("official_website_url") and not data.get("official_website_url"):
+                    data["official_website_url"] = pdf_data["official_website_url"]
+                if pdf_data.get("official_apply_url") and not data.get("official_apply_url"):
+                    data["official_apply_url"] = pdf_data["official_apply_url"]
+                logger.info(f"PDF merge complete. last_date={data.get('last_date')}, salary={data.get('salary')[:40] if data.get('salary') else ''}")
+            except Exception as pdf_err:
+                logger.warning(f"PDF extraction failed: {pdf_err}")
 
         return data
 

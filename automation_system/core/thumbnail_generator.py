@@ -208,16 +208,15 @@ class ThumbnailGenerator:
 
     def _generate_with_gemini_api(self, prompt: str):
         if not self.api_key:
-            logger.warning("GEMINI_API_KEY not set. Skipping AI thumbnail generation.")
+            logger.warning("GEMINI_API_KEY not set. Using PIL fallback.")
             return None
-        import requests
+        import requests as _req
+        # Models that support image generation (in order of preference)
         candidate_models = [
+            "gemini-2.0-flash-exp",
+            "gemini-2.0-flash-exp-image-generation",
             "gemini-2.0-flash-preview-image-generation",
             "gemini-2.5-flash-preview-05-20",
-            "gemini-2.5-flash-image",
-            "gemini-2.0-flash-exp-image-generation",
-            "gemini-3.1-flash-image-preview",
-            "gemini-3.1-flash-image",
         ]
         for model in candidate_models:
             try:
@@ -227,26 +226,35 @@ class ThumbnailGenerator:
                 )
                 payload = {
                     "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
+                    "generationConfig": {
+                        "responseModalities": ["IMAGE", "TEXT"]
+                    },
                 }
-                resp = requests.post(
+                resp = _req.post(
                     url, json=payload,
                     headers={"Content-Type": "application/json"},
-                    timeout=90,
+                    timeout=120,
                 )
                 if resp.status_code == 200:
-                    for candidate in resp.json().get("candidates", []):
+                    data = resp.json()
+                    for candidate in data.get("candidates", []):
                         for part in candidate.get("content", {}).get("parts", []):
                             if "inlineData" in part:
                                 raw = part["inlineData"].get("data", "")
                                 if raw:
-                                    logger.info(f"Successfully generated thumbnail using {model}!")
+                                    logger.info(f"Gemini AI thumbnail OK via {model}")
                                     return base64.b64decode(raw)
-                    logger.warning(f"Gemini {model} returned no image data.")
+                    logger.warning(f"Gemini {model}: 200 OK but no image in response. Candidates: {len(data.get('candidates',[]))}")
+                elif resp.status_code == 401:
+                    logger.error("Gemini API key is invalid (401). Set GEMINI_API_KEY env var in Render.")
+                    return None  # No point trying other models with invalid key
+                elif resp.status_code == 404:
+                    logger.warning(f"Gemini model {model} not found (404), trying next...")
                 else:
-                    logger.warning(f"Gemini {model} returned {resp.status_code}: {resp.text[:200]}")
+                    logger.warning(f"Gemini {model}: HTTP {resp.status_code} - {resp.text[:200]}")
             except Exception as exc:
-                logger.warning(f"Gemini AI thumbnail error on {model}: {exc}")
+                logger.warning(f"Gemini {model} error: {exc}")
+        logger.warning("All Gemini models failed. Using PIL fallback.")
         return None
 
     def _resize_to_1280x720(self, img_bytes: bytes) -> bytes:
