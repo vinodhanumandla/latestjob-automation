@@ -198,6 +198,7 @@
     </div>
     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
       <a href="/download-apk" class="btn btn-sm" style="background: #10b981; text-decoration: none; color: white;" target="_blank"><i class="fab fa-android"></i> 📱 Download Android App</a>
+      <button class="btn btn-sm" style="background: #f97316;" onclick="openCloudflareModal()"><i class="fas fa-bolt"></i> Cloudflare AI (10K Free)</button>
       <button class="btn btn-sm" style="background: #334155;" onclick="openTokenModal()"><i class="fas fa-key"></i> Connect Blogger API</button>
       <span class="status-badge-safe"><i class="fas fa-shield-alt"></i> SAFE REVIEW MODE</span>
     </div>
@@ -469,10 +470,76 @@
         <button class="btn" style="background: #475569;" onclick="closeTokenModal()">Cancel</button>
         <button class="btn btn-success" onclick="saveBloggerToken()"><i class="fas fa-save"></i> Save Token</button>
       </div>
+  <!-- Cloudflare Workers AI Modal -->
+  <div id="cloudflareModal" class="modal">
+    <div class="modal-content" style="max-width: 560px;">
+      <span class="modal-close" onclick="closeCloudflareModal()">&times;</span>
+      <h2 style="color: #f97316; margin-bottom: 8px;"><i class="fas fa-bolt"></i> Cloudflare Workers AI</h2>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px;">
+        Use Cloudflare's free FLUX.1 & SDXL models to generate hyperrealistic AI photos for thumbnails (10,000 free per day):
+      </p>
+      <div style="margin-bottom: 12px;">
+        <label style="font-size: 12px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">Cloudflare Account ID:</label>
+        <input type="text" id="cfAccountIdInput" class="input-url" style="width: 100%; box-sizing: border-box;" placeholder="Found on right sidebar of dash.cloudflare.com">
+      </div>
+      <div style="margin-bottom: 16px;">
+        <label style="font-size: 12px; font-weight: 700; color: #cbd5e1; display: block; margin-bottom: 4px;">Cloudflare API Token:</label>
+        <input type="password" id="cfApiTokenInput" class="input-url" style="width: 100%; box-sizing: border-box;" placeholder="API token with Workers AI Read permissions">
+      </div>
+      <div id="cfStatusMsg" style="font-size: 13px; margin-bottom: 14px; display: none;"></div>
+      <div style="display: flex; justify-content: flex-end; gap: 10px;">
+        <button class="btn" style="background: #475569;" onclick="closeCloudflareModal()">Cancel</button>
+        <button class="btn" style="background: #f97316; color: white; font-weight: 700;" onclick="saveCloudflareCredentials()"><i class="fas fa-save"></i> Save Cloudflare AI</button>
+      </div>
     </div>
   </div>
 
   <script>
+    function openCloudflareModal() {
+      document.getElementById("cloudflareModal").style.display = "flex";
+      fetch("/api/get-cloudflare-status")
+        .then(r => r.json())
+        .then(d => {
+          const msg = document.getElementById("cfStatusMsg");
+          if(d.configured) {
+            msg.style.display = "block";
+            msg.innerHTML = `<span style="color: #34d399;"><i class="fas fa-check-circle"></i> Configured (Account ID: ${d.account_id})</span>`;
+          } else {
+            msg.style.display = "none";
+          }
+        })
+        .catch(() => {});
+    }
+
+    function closeCloudflareModal() {
+      document.getElementById("cloudflareModal").style.display = "none";
+    }
+
+    async function saveCloudflareCredentials() {
+      const account_id = document.getElementById("cfAccountIdInput").value.trim();
+      const api_token = document.getElementById("cfApiTokenInput").value.trim();
+      if(!account_id || !api_token) {
+        alert("Please enter both Account ID and API Token.");
+        return;
+      }
+      try {
+        const res = await fetch("/api/save-cloudflare", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({account_id, api_token})
+        });
+        const data = await res.json();
+        if(data.success) {
+          alert("🎉 Cloudflare Workers AI configured successfully!\nNext thumbnail will use realistic FLUX.1/SDXL AI generation.");
+          closeCloudflareModal();
+        } else {
+          alert("Failed: " + (data.error || "Unknown error"));
+        }
+      } catch(e) {
+        alert("Error: " + e.message);
+      }
+    }
+
     function switchView(view) {
       const tbl = document.getElementById("tableContainer");
       const crd = document.getElementById("cardsContainer");

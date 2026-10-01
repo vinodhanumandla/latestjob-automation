@@ -109,6 +109,37 @@ def api_save_token():
         return jsonify({"success": True})
     return jsonify({"success": False, "error": "Failed to save token"}), 500
 
+@app.route("/api/save-cloudflare", methods=["POST"])
+def api_save_cloudflare():
+    """Saves Cloudflare Account ID and API Token."""
+    data = request.json or {}
+    account_id = data.get("account_id", "").strip()
+    api_token = data.get("api_token", "").strip()
+    if not account_id or not api_token:
+        return jsonify({"success": False, "error": "Account ID and API Token cannot be empty"}), 400
+
+    try:
+        from automation_system.config.config import CLOUDFLARE_CONFIG_FILE
+        with open(CLOUDFLARE_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump({"account_id": account_id, "api_token": api_token}, f, indent=2)
+
+        # Update in-memory pipeline generator
+        pipeline.thumbnail_generator.cf_account_id = account_id
+        pipeline.thumbnail_generator.cf_api_token = api_token
+
+        return jsonify({"success": True, "message": "Cloudflare Workers AI configured successfully!"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/get-cloudflare-status", methods=["GET"])
+def api_get_cloudflare_status():
+    """Checks if Cloudflare is configured."""
+    has_cf = bool(pipeline.thumbnail_generator.cf_account_id and pipeline.thumbnail_generator.cf_api_token)
+    return jsonify({
+        "configured": has_cf,
+        "account_id": pipeline.thumbnail_generator.cf_account_id[:6] + "..." if pipeline.thumbnail_generator.cf_account_id else ""
+    })
+
 @app.route("/api/create-draft/<int:job_id>", methods=["POST"])
 def api_create_draft(job_id):
     """Admin Approves post and creates it as a DRAFT on Blogger."""

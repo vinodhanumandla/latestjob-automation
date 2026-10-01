@@ -22,7 +22,9 @@ from PIL import Image, ImageDraw, ImageFont
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from automation_system.config.config import MEDIA_DIR, GEMINI_API_KEY
+from automation_system.config.config import (
+    MEDIA_DIR, GEMINI_API_KEY, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN
+)
 
 logger = logging.getLogger(__name__)
 ASSETS_DIR = BASE_DIR / "automation_system" / "media" / "assets"
@@ -83,6 +85,8 @@ class ThumbnailGenerator:
         self.assets_dir = ASSETS_DIR
         self.assets_dir.mkdir(parents=True, exist_ok=True)
         self.api_key = GEMINI_API_KEY
+        self.cf_account_id = CLOUDFLARE_ACCOUNT_ID
+        self.cf_api_token = CLOUDFLARE_API_TOKEN
 
     def detect_sector(self, org: str, post: str) -> str:
         text = (org + " " + post).lower()
@@ -212,6 +216,222 @@ class ThumbnailGenerator:
             f"- Ultra high quality, premium professional appearance\n"
             f"- Bright vibrant colors that stand out as social media thumbnails"
         )
+
+    def _generate_with_cloudflare_ai(
+        self,
+        organization: str,
+        post_name: str,
+        vacancies: str,
+        last_date: str,
+        sector: str = "uniform",
+    ):
+        """
+        Generates realistic photo using Cloudflare Workers AI (10,000 free requests/day),
+        then cleanly overlays the Modern 3-line recruitment format on top.
+        """
+        if not self.cf_account_id or not self.cf_api_token:
+            return None
+
+        cf_prompts = {
+            "medical": (
+                "Cinematic photorealistic portrait photograph of two young confident Indian doctors, "
+                "male and female doctor in clean white lab coats and stethoscope smiling, warm soft professional lighting, "
+                "standing on right side of frame, ultra high detail 8k, modern hospital clinic background, "
+                "dark blue subtle vignette on left side"
+            ),
+            "defence": (
+                "Cinematic photorealistic portrait photograph of a proud Indian police officer in crisp khaki official uniform, "
+                "standing tall and confident, warm golden sunlight, ultra high detail 8k, headquarters background, "
+                "dark navy subtle vignette on left side"
+            ),
+            "banker": (
+                "Cinematic photorealistic portrait photograph of two Indian corporate banking executives, man and woman in elegant "
+                "dark navy business suits, smiling, modern glass banking office background, 8k resolution, "
+                "warm ambient lighting, dark vignette on left side"
+            ),
+            "teacher": (
+                "Cinematic photorealistic portrait photograph of an Indian lecturer in formal attire and professor in blazer "
+                "holding books and tablet, smiling warmly, modern university college campus library background, 8k resolution, "
+                "soft depth of field, dark vignette on left side"
+            ),
+            "engineer": (
+                "Cinematic photorealistic portrait photograph of an Indian civil engineer in safety vest and helmet holding a tablet, "
+                "standing confidently with modern high-tech building in background, warm natural lighting, 8k resolution, "
+                "dark vignette on left side"
+            ),
+            "uniform": (
+                "Cinematic photorealistic portrait photograph of two confident Indian administrative civil service officers, "
+                "man and woman in formal business attire, smiling warmly, standing on right side, modern Indian secretariat building, "
+                "8k resolution, soft cinematic lighting, dark navy vignette on left side"
+            ),
+        }
+        prompt = cf_prompts.get(sector, cf_prompts["uniform"])
+
+        models = [
+            "@cf/black-forest-labs/flux-1-schnell",
+            "@cf/stabilityai/stable-diffusion-xl-base-1.0",
+            "@cf/bytedance/stable-diffusion-xl-lightning",
+        ]
+        
+        import requests as _req
+        headers = {
+            "Authorization": f"Bearer {self.cf_api_token}",
+            "Content-Type": "application/json"
+        }
+        
+        raw_img = None
+        for m in models:
+            try:
+                url = f"https://api.cloudflare.com/client/v4/accounts/{self.cf_account_id}/ai/run/{m}"
+                payload = {"prompt": prompt}
+                if "flux" in m:
+                    payload["num_steps"] = 4
+                resp = _req.post(url, headers=headers, json=payload, timeout=60)
+                if resp.status_code == 200 and resp.content and len(resp.content) > 5000:
+                    raw_img = resp.content
+                    logger.info(f"Cloudflare Workers AI generated realistic photo via {m} ({len(raw_img)} bytes)")
+                    break
+                else:
+                    logger.warning(f"Cloudflare AI {m} returned {resp.status_code}: {resp.text[:150]}")
+            except Exception as e:
+                logger.warning(f"Cloudflare AI {m} error: {e}")
+
+        if not raw_img:
+            return None
+
+        return self._composite_realistic_thumbnail(
+            bg_image_bytes=raw_img,
+            organization=organization,
+            post_name=post_name,
+            vacancies=vacancies,
+            last_date=last_date,
+            sector=sector,
+        )
+
+    def _composite_realistic_thumbnail(
+        self,
+        bg_image_bytes: bytes,
+        organization: str,
+        post_name: str,
+        vacancies: str,
+        last_date: str,
+        sector: str = "uniform",
+    ) -> bytes:
+        """
+        Takes realistic AI image, resizes to 1280x720, applies a smooth dark gradient
+        fade on the left (preserving the realistic character on the right), and overlays
+        the sharp, perfect, Modern 3-Line High-Quality recruitment text.
+        """
+        W, H = 1280, 720
+        img = Image.open(io.BytesIO(bg_image_bytes)).convert("RGB")
+        w, h = img.size
+        if w / h > 16 / 9:
+            new_w = int(h * 16 / 9)
+            img = img.crop(((w - new_w) // 2, 0, (w - new_w) // 2 + new_w, h))
+        elif w / h < 16 / 9:
+            new_h = int(w * 9 / 16)
+            img = img.crop((0, (h - new_h) // 2, w, (h - new_h) // 2 + new_h))
+        img = img.resize((W, H), Image.Resampling.LANCZOS)
+
+        # Smooth dark gradient overlay on left 65% for high-contrast readability
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d_over = ImageDraw.Draw(overlay)
+        cutoff_x = int(W * 0.68)  # ~870px
+        for x in range(cutoff_x):
+            prog = x / cutoff_x
+            alpha = int(245 * max(0.0, 1.0 - (prog ** 1.3)))
+            d_over.line([(x, 0), (x, H)], fill=(8, 16, 36, alpha))
+
+        base = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+        draw = ImageDraw.Draw(base)
+
+        import datetime as _dt
+        year = _dt.datetime.now().year
+
+        # Fonts
+        f_badge = self._get_font("arial", 24, bold=True)
+        f_btn = self._get_font("arial", 24, bold=True)
+        f_footer = self._get_font("arial", 18, bold=False)
+
+        # 1. NOTIFICATION OUT badge (Top Left)
+        bw, bh = 240, 50
+        draw.rounded_rectangle([(60, 48), (60 + bw, 48 + bh)], radius=12, fill="#FACC15")
+        draw.text((75, 60), "NOTIFICATION OUT", fill="#0A0F1D", font=f_badge)
+
+        # Clean display org
+        clean_org = organization.strip()
+        pm = re.search(r'\(([^)]+)\)', clean_org)
+        if pm and len(pm.group(1)) <= 22:
+            display_org = pm.group(1).strip()
+        else:
+            display_org = clean_org[:26] + "..." if len(clean_org) > 26 else clean_org
+
+        # Format vacancies
+        vac_clean = re.sub(r'[^\d]', '', str(vacancies))
+        if vac_clean:
+            try:
+                vac_num_str = f"{int(vac_clean):,}"
+            except Exception:
+                vac_num_str = vac_clean
+        else:
+            vac_num_str = "Various"
+
+        # Format last date
+        ld_pil = last_date.strip() if last_date and last_date.lower() not in ["refer notification", ""] else ""
+        if ld_pil:
+            parts = re.split(r'[\-/.]', ld_pil)
+            if len(parts) == 3:
+                dp, mp, yp = parts[0].zfill(2), parts[1].zfill(2), parts[2]
+                if len(yp) == 2: yp = "20" + yp
+                ld_pil = f"{dp}-{mp}-{yp}"
+
+        # Dynamic Font Size for Line 1 so it never overlaps characters on right
+        l1_p1 = f"{display_org} released"
+        l1_p2 = f"Notification {year}"
+
+        f_size = 52
+        f_line1 = self._get_font("impact", f_size, bold=True)
+        while f_size > 34:
+            bbox = draw.textbbox((0, 0), l1_p1, font=f_line1)
+            if (bbox[2] - bbox[0]) < 620:
+                break
+            f_size -= 4
+            f_line1 = self._get_font("impact", f_size, bold=True)
+
+        f_line2 = self._get_font("impact", 48, bold=True)
+        f_line3 = self._get_font("impact", 48, bold=True)
+
+        # Draw Line 1 (Two rows, large white text with drop shadow)
+        y_pos = 135
+        draw.text((63, y_pos + 3), l1_p1, fill=(2, 6, 16), font=f_line1)
+        draw.text((60, y_pos), l1_p1, fill="#FFFFFF", font=f_line1)
+        y_pos += (f_size + 14)
+        draw.text((63, y_pos + 3), l1_p2, fill=(2, 6, 16), font=f_line1)
+        draw.text((60, y_pos), l1_p2, fill="#FFFFFF", font=f_line1)
+
+        # Draw Line 2: Number of posts (Vibrant Gold)
+        y_pos += 85
+        text_line2 = f"Number of posts: {vac_num_str}"
+        draw.text((63, y_pos + 3), text_line2, fill=(120, 53, 15), font=f_line2)
+        draw.text((60, y_pos), text_line2, fill="#FBBF24", font=f_line2)
+
+        # Draw Line 3: Last date (Vibrant Red)
+        y_pos += 78
+        text_line3 = f"Last date: {ld_pil}" if ld_pil else "Last date: Check Notification"
+        draw.text((63, y_pos + 3), text_line3, fill=(110, 15, 15), font=f_line3)
+        draw.text((60, y_pos), text_line3, fill="#EF4444", font=f_line3)
+
+        # APPLY NOW Button below
+        btn_x, btn_y, btn_w, btn_h = 60, y_pos + 90, 230, 56
+        draw.rounded_rectangle([(btn_x, btn_y), (btn_x + btn_w, btn_y + btn_h)], radius=28, fill="#0B1528", outline="#FFFFFF", width=3)
+        draw.text((btn_x + 48, btn_y + 13), "APPLY NOW", fill="#FFFFFF", font=f_btn)
+
+        # Footer Watermark
+        draw.text((60, H - 35), "www.latestjobnotifications.online", fill=(148, 163, 184), font=f_footer)
+
+        out = io.BytesIO()
+        base.save(out, "JPEG", quality=95)
+        return out.getvalue()
 
     def _generate_with_gemini_api(self, prompt: str):
         if not self.api_key:
@@ -505,13 +725,23 @@ class ThumbnailGenerator:
                 if len(yp) == 2: yp = "20" + yp
                 ld_pil = f"{dp}-{mp}-{yp}"
 
-        # Draw Line 1 (Two rows for perfect readability)
-        y_pos = 135
+        # Draw Line 1 (Two rows for perfect readability, dynamic sizing to prevent overlap)
         l1_p1 = f"{display_org} released"
         l1_p2 = f"Notification {year}"
+
+        f_size = 52
+        f_line1 = self._get_font("impact", f_size, bold=True)
+        while f_size > 34:
+            bbox = draw.textbbox((0, 0), l1_p1, font=f_line1)
+            if (bbox[2] - bbox[0]) < 610:
+                break
+            f_size -= 4
+            f_line1 = self._get_font("impact", f_size, bold=True)
+
+        y_pos = 135
         draw.text((63, y_pos + 3), l1_p1, fill=(2, 6, 16), font=f_line1)
         draw.text((60, y_pos), l1_p1, fill="#FFFFFF", font=f_line1)
-        y_pos += 68
+        y_pos += (f_size + 14)
         draw.text((63, y_pos + 3), l1_p2, fill=(2, 6, 16), font=f_line1)
         draw.text((60, y_pos), l1_p2, fill="#FFFFFF", font=f_line1)
 
@@ -564,8 +794,21 @@ class ThumbnailGenerator:
         file_path = self.output_dir / safe_filename
         img_bytes = None
 
-        # 1. Try Gemini AI image generation first (when billing is enabled)
-        if self.api_key:
+        # 1. Try Cloudflare Workers AI first (10,000 free requests/day with FLUX.1 / SDXL)
+        if self.cf_account_id and self.cf_api_token:
+            logger.info(f"Cloudflare Workers AI thumbnail attempt: {organization} | {post_name}")
+            img_bytes = self._generate_with_cloudflare_ai(
+                organization=organization,
+                post_name=post_name,
+                vacancies=vacancies,
+                last_date=last_date,
+                sector=sector,
+            )
+            if img_bytes:
+                logger.info(f"Cloudflare AI realistic thumbnail OK: {organization}")
+
+        # 2. Try Gemini AI image generation (when billing is enabled)
+        if not img_bytes and self.api_key:
             logger.info(f"AI thumbnail attempt: {organization} | {post_name}")
             prompt = self._build_ai_prompt(
                 organization=organization,
@@ -581,7 +824,7 @@ class ThumbnailGenerator:
                 img_bytes = self._resize_to_1280x720(img_bytes)
                 logger.info(f"Gemini AI thumbnail OK: {organization}")
 
-        # 2. Modern 3-line high-contrast renderer
+        # 3. Modern 3-line high-contrast renderer (always reliable)
         if not img_bytes:
             img_bytes = self._generate_pil_fallback(
                 organization=organization,

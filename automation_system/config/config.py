@@ -39,7 +39,24 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 TIMEZONE = "Asia/Kolkata"
 
 import base64
+import json
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or base64.b64decode(b"QVEuQWI4Uk42TG9HQm9LNjIzT0MxX2ZjOWlLVnJnSmtJSkV4a1k5YTllek5RbVVqUFJOeWc=").decode()
+
+# Cloudflare Workers AI (10,000 free requests/day per account)
+CLOUDFLARE_CONFIG_FILE = CONFIG_DIR / "cloudflare_config.json"
+CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
+CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
+
+if CLOUDFLARE_CONFIG_FILE.exists():
+    try:
+        with open(CLOUDFLARE_CONFIG_FILE, "r", encoding="utf-8") as _cf_f:
+            _cf_data = json.load(_cf_f)
+            if not CLOUDFLARE_ACCOUNT_ID:
+                CLOUDFLARE_ACCOUNT_ID = _cf_data.get("account_id", "").strip()
+            if not CLOUDFLARE_API_TOKEN:
+                CLOUDFLARE_API_TOKEN = _cf_data.get("api_token", "").strip()
+    except Exception:
+        pass
 
 # Google Blogger OAuth2 credentials file path
 BLOGGER_CLIENT_SECRET_FILE = CONFIG_DIR / "client_secret.json"
