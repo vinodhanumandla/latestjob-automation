@@ -234,35 +234,46 @@ class ThumbnailGenerator:
 
         cf_prompts = {
             "medical": (
-                "Cinematic photorealistic portrait photograph of two young confident Indian doctors, "
-                "male and female doctor in clean white lab coats and stethoscope smiling, warm soft professional lighting, "
-                "standing on right side of frame, ultra high detail 8k, modern hospital clinic background, "
-                "dark blue subtle vignette on left side"
+                "Widescreen 16:9 modern YouTube recruitment banner thumbnail background, "
+                "professional Indian medical healthcare recruitment theme, sleek deep teal and cyan background on left 60%, "
+                "confident photorealistic Indian doctor in white lab coat and stethoscope standing on right 40%, "
+                "3D golden medical emblem badge on top right, clean solid dark space on left, studio lighting, "
+                "8k resolution, modern corporate branding poster, textless blank layout, no words no text"
             ),
             "defence": (
-                "Cinematic photorealistic portrait photograph of a proud Indian police officer in crisp khaki official uniform, "
-                "standing tall and confident, warm golden sunlight, ultra high detail 8k, headquarters background, "
-                "dark navy subtle vignette on left side"
+                "Widescreen 16:9 modern YouTube recruitment banner thumbnail background, "
+                "proud Indian police defence recruitment theme, sleek dark navy and olive khaki background on left 60% with gold accents, "
+                "confident photorealistic Indian police officer in smart khaki uniform standing on right 40%, "
+                "3D golden national shield emblem badge on top right, clean solid dark space on left, studio lighting, "
+                "8k resolution, modern poster, textless blank layout, no words no text"
             ),
             "banker": (
-                "Cinematic photorealistic portrait photograph of two Indian corporate banking executives, man and woman in elegant "
-                "dark navy business suits, smiling, modern glass banking office background, 8k resolution, "
-                "warm ambient lighting, dark vignette on left side"
+                "Widescreen 16:9 modern YouTube recruitment banner thumbnail background, "
+                "Indian banking corporate finance recruitment theme, sleek royal navy blue background on left 60% with gold accents, "
+                "confident photorealistic Indian bank officer in smart dark suit standing on right 40%, "
+                "3D golden finance emblem badge on top right, clean solid dark space on left, studio lighting, "
+                "8k resolution, modern poster, textless blank layout, no words no text"
             ),
             "teacher": (
-                "Cinematic photorealistic portrait photograph of an Indian lecturer in formal attire and professor in blazer "
-                "holding books and tablet, smiling warmly, modern university college campus library background, 8k resolution, "
-                "soft depth of field, dark vignette on left side"
+                "Widescreen 16:9 modern YouTube recruitment banner thumbnail background, "
+                "Indian education university teacher recruitment theme, sleek dark royal blue background on left 60% with golden geometric accents, "
+                "confident photorealistic Indian educator teacher in formal attire standing on right 40%, "
+                "3D golden academic emblem badge on top right, clean solid dark space on left, studio lighting, "
+                "8k resolution, modern poster, textless blank layout, no words no text"
             ),
             "engineer": (
-                "Cinematic photorealistic portrait photograph of an Indian civil engineer in safety vest and helmet holding a tablet, "
-                "standing confidently with modern high-tech building in background, warm natural lighting, 8k resolution, "
-                "dark vignette on left side"
+                "Widescreen 16:9 modern YouTube recruitment banner thumbnail background, "
+                "Indian engineering technical recruitment theme, sleek dark navy background on left 60% with industrial orange gold geometric accents, "
+                "confident photorealistic Indian engineer with safety helmet standing on right 40%, "
+                "3D golden technical gear emblem badge on top right, clean solid dark space on left, studio lighting, "
+                "8k resolution, modern poster, textless blank layout, no words no text"
             ),
             "uniform": (
-                "Cinematic photorealistic portrait photograph of two confident Indian administrative civil service officers, "
-                "man and woman in formal business attire, smiling warmly, standing on right side, modern Indian secretariat building, "
-                "8k resolution, soft cinematic lighting, dark navy vignette on left side"
+                "Widescreen 16:9 modern YouTube recruitment banner thumbnail background, "
+                "professional Indian government job recruitment theme, sleek royal navy blue background on left 60% with subtle geometric gold accents, "
+                "confident photorealistic Indian professionals in formal suits standing on right 40%, "
+                "3D golden decorative emblem seal on top right corner, clean solid dark space on left, studio lighting, "
+                "8k resolution, modern corporate branding poster, textless blank layout, no words no text"
             ),
         }
         prompt = cf_prompts.get(sector, cf_prompts["uniform"])
