@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     libpng-dev \
     curl \
+    fonts-dejavu-core \
+    fonts-freefont-ttf \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

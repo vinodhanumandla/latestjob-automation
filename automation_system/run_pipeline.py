@@ -28,6 +28,7 @@ class JobPipeline:
         init_database()
         self.scanner = JobScanner()
         self.thumbnail_gen = ThumbnailGenerator()
+        self.thumbnail_generator = self.thumbnail_gen
         self.content_gen = ContentGenerator()
         self.internal_linker = InternalLinkingEngine()
         self.validator = PostValidator()
@@ -316,20 +317,13 @@ class JobPipeline:
         """
         logger.info(f"⚡ [1-CLICK AUTO PUBLISH] Starting end-to-end pipeline for Job #{job_id}...")
 
-        # Step 1: Check if content already generated
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM generated_posts WHERE job_id = ? ORDER BY id DESC LIMIT 1", (job_id,))
-        gen_post = cursor.fetchone()
-        conn.close()
+        # Step 1: Always generate fresh AI content + modern photorealistic thumbnail
+        logger.info(f"⚡ [1-CLICK AUTO PUBLISH] Generating fresh AI content + modern thumbnail for Job #{job_id}...")
+        proc_ok = self.process_job(job_id)
+        if not proc_ok:
+            return {"success": False, "error": "Step 1 Failed: AI post / thumbnail generation error."}
 
-        if not gen_post:
-            logger.info(f"⚡ [1-CLICK AUTO PUBLISH] Job #{job_id} needs AI generation. Processing...")
-            proc_ok = self.process_job(job_id)
-            if not proc_ok:
-                return {"success": False, "error": "Step 1 Failed: AI post / thumbnail generation error."}
-
-        # Step 2: Ensure Blogger draft exists
+        # Step 2: Ensure Blogger draft exists (or recreate with new thumbnail)
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM blogger_posts WHERE job_id = ? ORDER BY id DESC LIMIT 1", (job_id,))
@@ -384,10 +378,14 @@ class JobPipeline:
 
     def update_live_post_thumbnail(self, job_id):
         """
-        PATCHes an already-published Blogger post with the freshly generated
-        thumbnail + content — WITHOUT deleting/republishing (URL stays unchanged).
-        Run force_regenerate_job() first to get a new thumbnail.
+        PATCHes an already-published Blogger post with a fresh modern thumbnail + content
+        WITHOUT deleting/republishing (URL stays unchanged).
+        Automatically generates a fresh AI thumbnail and patches in one step!
         """
+        # Step 1: Ensure fresh thumbnail and content are generated
+        logger.info(f"[UPDATE LIVE] Regenerating fresh photorealistic thumbnail for Job #{job_id}...")
+        self.force_regenerate_job(job_id)
+
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -396,7 +394,7 @@ class JobPipeline:
         gen_post = cursor.fetchone()
         if not gen_post:
             conn.close()
-            return {"success": False, "error": "No generated post found. Run Force Regenerate first."}
+            return {"success": False, "error": "Failed to generate new post content."}
 
         # Fetch the blogger post record
         cursor.execute("SELECT * FROM blogger_posts WHERE job_id = ? ORDER BY id DESC LIMIT 1", (job_id,))
