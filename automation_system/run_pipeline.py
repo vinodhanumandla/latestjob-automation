@@ -347,6 +347,115 @@ class JobPipeline:
         pub_res = self.approve_and_publish_job(job_id)
         return pub_res
 
+    def force_regenerate_job(self, job_id):
+        """
+        Force-regenerates thumbnail + AI content for ANY job (including PUBLISHED ones).
+        Deletes the old generated_posts record and runs the full pipeline again.
+        Does NOT delete the live Blogger post - use update_live_post_thumbnail() after this.
+        """
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
+        job = cursor.fetchone()
+        if not job:
+            conn.close()
+            return {"success": False, "error": f"Job #{job_id} not found."}
+
+        logger.info(f"[FORCE REGEN] Deleting old generated_posts record for Job #{job_id}...")
+        cursor.execute("DELETE FROM generated_posts WHERE job_id = ?", (job_id,))
+        conn.commit()
+        conn.close()
+
+        logger.info(f"[FORCE REGEN] Running full pipeline for Job #{job_id}...")
+        success = self.process_job(job_id)
+        if not success:
+            return {"success": False, "error": "Pipeline generation failed. Check logs."}
+
+        # Fetch the newly generated record
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT thumbnail_url, thumbnail_path FROM generated_posts WHERE job_id = ? ORDER BY id DESC LIMIT 1", (job_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        thumb_url = row["thumbnail_url"] if row else ""
+        logger.info(f"[FORCE REGEN] Job #{job_id} regenerated. New thumb_url: {thumb_url}")
+        return {"success": True, "job_id": job_id, "thumbnail_url": thumb_url}
+
+    def update_live_post_thumbnail(self, job_id):
+        """
+        PATCHes an already-published Blogger post with the freshly generated
+        thumbnail + content — WITHOUT deleting/republishing (URL stays unchanged).
+        Run force_regenerate_job() first to get a new thumbnail.
+        """
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Fetch the generated post
+        cursor.execute("SELECT * FROM generated_posts WHERE job_id = ? ORDER BY id DESC LIMIT 1", (job_id,))
+        gen_post = cursor.fetchone()
+        if not gen_post:
+            conn.close()
+            return {"success": False, "error": "No generated post found. Run Force Regenerate first."}
+
+        # Fetch the blogger post record
+        cursor.execute("SELECT * FROM blogger_posts WHERE job_id = ? ORDER BY id DESC LIMIT 1", (job_id,))
+        blogger_record = cursor.fetchone()
+        if not blogger_record or not blogger_record["blogger_post_id"]:
+            conn.close()
+            return {"success": False, "error": "No Blogger post record found for this job."}
+
+        blogger_post_id = blogger_record["blogger_post_id"]
+        labels_list = [l.strip() for l in (gen_post["labels"] or "").split(",") if l.strip()]
+
+        # Ensure thumbnail is a public URL
+        content_to_send = gen_post["generated_content"]
+        thumb_path = gen_post["thumbnail_path"]
+        current_thumb_url = gen_post["thumbnail_url"] or ""
+
+        if not current_thumb_url.startswith("http"):
+            if thumb_path and os.path.exists(thumb_path):
+                public_url = self.thumbnail_gen.upload_to_public_host(thumb_path)
+                if public_url:
+                    content_to_send = content_to_send.replace(current_thumb_url, public_url)
+                    now_time = get_current_ist_time()
+                    cursor.execute("UPDATE generated_posts SET thumbnail_url = ?, updated_at = ? WHERE id = ?",
+                                   (public_url, now_time, gen_post["id"]))
+                    conn.commit()
+                    current_thumb_url = public_url
+
+        # PATCH the live Blogger post
+        logger.info(f"[UPDATE LIVE] Patching Blogger post {blogger_post_id} for Job #{job_id} with new thumbnail...")
+        patch_res = self.blogger_client.update_post(
+            post_id=blogger_post_id,
+            title=gen_post["generated_title"],
+            content=content_to_send,
+            labels=labels_list
+        )
+
+        now_time = get_current_ist_time()
+        if patch_res.get("success"):
+            live_url = patch_res.get("url", blogger_record["blogger_url"] or "")
+            cursor.execute("UPDATE blogger_posts SET blogger_url = ?, updated_at = ? WHERE id = ?",
+                           (live_url, now_time, blogger_record["id"]))
+            cursor.execute("UPDATE generated_posts SET status = 'PUBLISHED', updated_at = ? WHERE id = ?",
+                           (now_time, gen_post["id"]))
+            cursor.execute("UPDATE jobs SET status = 'PUBLISHED', updated_at = ? WHERE id = ?",
+                           (now_time, job_id))
+            conn.commit()
+            conn.close()
+            logger.info(f"[UPDATE LIVE] Job #{job_id} live post updated! New thumb: {current_thumb_url}")
+            return {
+                "success": True,
+                "url": live_url,
+                "thumbnail_url": current_thumb_url,
+                "job_id": job_id
+            }
+        else:
+            conn.close()
+            return {"success": False, "error": patch_res.get("error", "Blogger PATCH failed")}
+
+
 if __name__ == "__main__":
     pipeline = JobPipeline()
     print("Running initial pipeline test...")
@@ -354,3 +463,4 @@ if __name__ == "__main__":
     print("Discovered Jobs:", discovered)
     if discovered:
         pipeline.process_job(discovered[0])
+

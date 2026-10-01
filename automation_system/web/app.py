@@ -167,6 +167,24 @@ def api_direct_publish_job(job_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route("/api/force-regenerate/<int:job_id>", methods=["POST"])
+def api_force_regenerate(job_id):
+    """Force re-generates HD thumbnail + AI content for any job (even PUBLISHED ones)."""
+    try:
+        res = pipeline.force_regenerate_job(job_id)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/update-live-post/<int:job_id>", methods=["POST"])
+def api_update_live_post(job_id):
+    """PATCHes an already-published Blogger post with a new thumbnail & content (URL unchanged)."""
+    try:
+        res = pipeline.update_live_post_thumbnail(job_id)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route("/api/preview/<int:job_id>", methods=["GET"])
 def api_preview_job(job_id):
     """Returns generated HTML and details for live preview modal."""

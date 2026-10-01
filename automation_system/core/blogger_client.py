@@ -454,6 +454,56 @@ class BloggerClient:
             logger.error(f"create_post_with_custom_url exception: {e}")
             return {"success": False, "error": str(e)}
 
+    def update_post(self, post_id: str, title: str = None, content: str = None,
+                    labels=None, search_description: str = "") -> dict:
+        """
+        PATCHes an existing live Blogger post to update its content/thumbnail
+        WITHOUT changing its URL or deleting it.
+        Only fields that are not None will be updated.
+        Returns: {"success": True/False, "url": ..., "id": ...}
+        """
+        if not self.access_token:
+            return {"success": False, "error": "No Blogger access token configured."}
+
+        url = f"https://www.googleapis.com/blogger/v3/blogs/{self.blog_id}/posts/{post_id}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {"kind": "blogger#post"}
+        if title is not None:
+            payload["title"] = self._sanitize_text(title)
+        if content is not None:
+            payload["content"] = self._sanitize_text(content)
+        if labels is not None:
+            payload["labels"] = self._sanitize_labels(labels)
+
+        try:
+            resp = requests.patch(url, headers=headers, json=payload, timeout=30)
+            if resp.status_code == 401:
+                logger.info("Token expired (401). Refreshing and retrying update_post...")
+                if self.refresh_access_token():
+                    headers["Authorization"] = f"Bearer {self.access_token}"
+                    resp = requests.patch(url, headers=headers, json=payload, timeout=30)
+
+            if resp.status_code in [200, 201]:
+                data = resp.json()
+                logger.info(f"Post {post_id} updated successfully. URL: {data.get('url', '')}")
+                return {
+                    "success": True,
+                    "id": data.get("id"),
+                    "url": data.get("url", ""),
+                    "status": data.get("status", "LIVE")
+                }
+            else:
+                logger.error(f"update_post failed: {resp.status_code} - {resp.text[:300]}")
+                return {"success": False, "error": f"{resp.status_code}: {resp.text[:200]}"}
+        except Exception as e:
+            logger.error(f"update_post exception: {e}")
+            return {"success": False, "error": str(e)}
+
+
 if __name__ == "__main__":
     bc = BloggerClient()
     print("Blogger client initialized. Blog ID:", bc.blog_id)

@@ -321,6 +321,14 @@
                 <a href="{{ job.blogger_url }}" target="_blank" class="btn btn-sm" style="background: #064e3b; color: #34d399; border: 1px solid #059669; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; font-weight: 700;" title="Open Published Post in Blogger">
                   <i class="fas fa-external-link-alt"></i> View Live
                 </a>
+                <button class="btn btn-sm" style="background: #1e40af; color: #93c5fd; border: 1px solid #3b82f6;" onclick="forceRegenerate({{ job.id }}, this)" title="Re-generate a new AI thumbnail + content (keeps post live)">
+                  <i class="fas fa-sync-alt"></i> New Thumb
+                </button>
+                {% if job.blogger_post_id %}
+                <button class="btn btn-sm" style="background: #7c3aed; color: #ddd6fe; border: 1px solid #8b5cf6;" onclick="updateLivePost({{ job.id }}, this)" title="Push new thumbnail to the live Blogger post (URL unchanged)">
+                  <i class="fas fa-upload"></i> Update Live
+                </button>
+                {% endif %}
               {% endif %}
 
               {% if job.status == 'DISCOVERED' or job.status == 'FAILED' %}
@@ -417,6 +425,16 @@
           <a href="{{ job.blogger_url }}" target="_blank" class="btn" style="width: 100%; background: #064e3b; color: #34d399; border: 1px solid #059669; text-decoration: none; justify-content: center; padding: 10px; font-weight: 700;">
             <i class="fas fa-external-link-alt"></i> View Live on Blogger
           </a>
+          <div style="display: flex; gap: 8px; margin-top: 8px;">
+            <button class="btn btn-sm" style="flex: 1; background: #1e40af; color: #93c5fd; border: 1px solid #3b82f6; justify-content: center;" onclick="forceRegenerate({{ job.id }}, this)" title="Re-generate new AI thumbnail">
+              <i class="fas fa-sync-alt"></i> New Thumb
+            </button>
+            {% if job.blogger_post_id %}
+            <button class="btn btn-sm" style="flex: 1; background: #7c3aed; color: #ddd6fe; border: 1px solid #8b5cf6; justify-content: center;" onclick="updateLivePost({{ job.id }}, this)" title="Update live post with new thumbnail">
+              <i class="fas fa-upload"></i> Update Live
+            </button>
+            {% endif %}
+          </div>
         {% endif %}
 
         <div class="job-card-secondary-btns">
@@ -728,6 +746,53 @@
         }
       } catch(e) {
         alert("Error: " + e.message);
+      }
+    }
+
+    async function forceRegenerate(id, btn) {
+      if(!confirm(`🔄 Force Regenerate for Job #${id}?\n\nThis will create a brand-new AI thumbnail + content.\nThe live post on Blogger will NOT change until you click "Update Live".\n\nProceed?`)) return;
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+      try {
+        const res = await fetch(`/api/force-regenerate/${id}`, {method: 'POST'});
+        const data = await res.json();
+        if(data.success) {
+          alert(`✅ New thumbnail generated for Job #${id}!\n\nThumb URL: ${data.thumbnail_url || '(local)'}\n\nNow click "📤 Update Live" to push it to the live Blogger post.`);
+          location.reload();
+        } else {
+          alert('❌ Force Regenerate Failed: ' + (data.error || 'Unknown error'));
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+        }
+      } catch(e) {
+        alert('Error: ' + e.message);
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+
+    async function updateLivePost(id, btn) {
+      if(!confirm(`📤 Update Live Post for Job #${id}?\n\nThis will PATCH the live Blogger post with the newly generated thumbnail + content.\nThe post URL will NOT change.\n\nProceed?`)) return;
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+      try {
+        const res = await fetch(`/api/update-live-post/${id}`, {method: 'POST'});
+        const data = await res.json();
+        if(data.success) {
+          alert(`🎉 Live post updated for Job #${id}!\n\nNew thumbnail is now live.\nURL: ${data.url || ''}`);
+          if(data.url) window.open(data.url, '_blank');
+          location.reload();
+        } else {
+          alert('❌ Update Failed: ' + (data.error || 'Unknown error'));
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+        }
+      } catch(e) {
+        alert('Error: ' + e.message);
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
       }
     }
 
