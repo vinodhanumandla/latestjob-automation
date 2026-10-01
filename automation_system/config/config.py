@@ -44,16 +44,16 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or base64.b64decode(b"QVEuQWI4Uk42T
 
 # Cloudflare Workers AI (10,000 free requests/day per account)
 CLOUDFLARE_CONFIG_FILE = CONFIG_DIR / "cloudflare_config.json"
-CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
-CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
+CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID") or base64.b64decode(b"OTRhYjhiZWE0MjBjN2YwMTZiOTM2OWI3Y2Q1YjM4MTU=").decode()
+CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN") or base64.b64decode(b"Y2Z1dF9qa0pzZ3F2STBUSmxFekVDVU1hUzhUaUJTZkRHa1lmUUFTOHR1WDVsZTM3NjQ5MDU=").decode()
 
 if CLOUDFLARE_CONFIG_FILE.exists():
     try:
         with open(CLOUDFLARE_CONFIG_FILE, "r", encoding="utf-8") as _cf_f:
             _cf_data = json.load(_cf_f)
-            if not CLOUDFLARE_ACCOUNT_ID:
+            if _cf_data.get("account_id"):
                 CLOUDFLARE_ACCOUNT_ID = _cf_data.get("account_id", "").strip()
-            if not CLOUDFLARE_API_TOKEN:
+            if _cf_data.get("api_token"):
                 CLOUDFLARE_API_TOKEN = _cf_data.get("api_token", "").strip()
     except Exception:
         pass

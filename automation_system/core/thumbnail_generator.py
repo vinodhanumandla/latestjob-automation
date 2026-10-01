@@ -284,13 +284,23 @@ class ThumbnailGenerator:
             try:
                 url = f"https://api.cloudflare.com/client/v4/accounts/{self.cf_account_id}/ai/run/{m}"
                 payload = {"prompt": prompt}
-                if "flux" in m:
-                    payload["num_steps"] = 4
                 resp = _req.post(url, headers=headers, json=payload, timeout=60)
-                if resp.status_code == 200 and resp.content and len(resp.content) > 5000:
-                    raw_img = resp.content
-                    logger.info(f"Cloudflare Workers AI generated realistic photo via {m} ({len(raw_img)} bytes)")
-                    break
+                if resp.status_code == 200 and resp.content:
+                    c_type = resp.headers.get("content-type", "")
+                    if "application/json" in c_type:
+                        try:
+                            data = resp.json()
+                            b64_img = data.get("result", {}).get("image", "")
+                            if b64_img:
+                                raw_img = base64.b64decode(b64_img)
+                        except Exception as e:
+                            logger.warning(f"Error decoding Cloudflare JSON: {e}")
+                    elif len(resp.content) > 5000:
+                        raw_img = resp.content
+
+                    if raw_img and len(raw_img) > 5000:
+                        logger.info(f"Cloudflare Workers AI generated realistic photo via {m} ({len(raw_img)} bytes)")
+                        break
                 else:
                     logger.warning(f"Cloudflare AI {m} returned {resp.status_code}: {resp.text[:150]}")
             except Exception as e:

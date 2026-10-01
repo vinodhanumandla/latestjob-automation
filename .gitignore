@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 
 automation_system/config/blogger_token.json
+automation_system/config/cloudflare_config.json
+*.db
+
