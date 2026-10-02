@@ -556,14 +556,41 @@ class ThumbnailGenerator:
 
     def upload_to_public_host(self, local_path: str) -> str:
         """
-        Uploads generated thumbnail to public CDN (freeimage.host)
-        so Blogger dashboard can display the thumbnail image.
+        Uploads generated thumbnail to a public CDN with multi-host waterfall fallback.
+        Tries multiple CDN hosts in sequence to guarantee a public https:// URL for Blogger.
+
+        Priority: Catbox.moe (no API key) → freeimage.host → Litterbox (72h fallback)
         """
+        import requests as _req
+
+        if not local_path or not os.path.exists(local_path):
+            logger.warning(f"Thumbnail file not found for CDN upload: {local_path}")
+            return ""
+
+        with open(local_path, "rb") as f:
+            raw_bytes = f.read()
+        b64_data = base64.b64encode(raw_bytes).decode("utf-8")
+        filename = os.path.basename(local_path)
+
+        # ── CDN 1: Catbox.moe (anonymous upload, no API key needed, very reliable) ──
         try:
-            import requests
-            with open(local_path, "rb") as f:
-                b64_data = base64.b64encode(f.read()).decode("utf-8")
-            resp = requests.post(
+            resp = _req.post(
+                "https://catbox.moe/user/api.php",
+                data={"reqtype": "fileupload"},
+                files={"fileToUpload": (filename, raw_bytes, "image/jpeg")},
+                timeout=40,
+            )
+            if resp.status_code == 200 and resp.text.strip().startswith("http"):
+                url = resp.text.strip()
+                logger.info(f"✅ Catbox.moe CDN upload OK: {url}")
+                return url
+            logger.warning(f"Catbox.moe returned {resp.status_code}: {resp.text[:150]}")
+        except Exception as exc:
+            logger.warning(f"Catbox.moe CDN upload failed: {exc}")
+
+        # ── CDN 2: freeimage.host (base64 upload) ──────────────────────────────
+        try:
+            resp = _req.post(
                 "https://freeimage.host/api/1/upload",
                 data={
                     "key": "6d207e02198a847aa98d0a2a901485a5",
@@ -571,15 +598,35 @@ class ThumbnailGenerator:
                     "source": b64_data,
                     "format": "json",
                 },
-                timeout=20,
+                timeout=40,
             )
             if resp.status_code == 200:
-                img_url = resp.json().get("image", {}).get("url")
-                if img_url:
-                    logger.info(f"Thumbnail CDN URL: {img_url}")
+                data = resp.json()
+                img_url = (data.get("image") or {}).get("url", "")
+                if img_url and img_url.startswith("http"):
+                    logger.info(f"✅ freeimage.host CDN upload OK: {img_url}")
                     return img_url
+            logger.warning(f"freeimage.host returned {resp.status_code}: {resp.text[:150]}")
         except Exception as exc:
-            logger.warning(f"CDN upload failed: {exc}")
+            logger.warning(f"freeimage.host CDN upload failed: {exc}")
+
+        # ── CDN 3: Litterbox.catbox.moe (72h temp host, last resort) ───────────
+        try:
+            resp = _req.post(
+                "https://litterbox.catbox.moe/resources/internals/api.php",
+                data={"reqtype": "fileupload", "time": "72h"},
+                files={"fileToUpload": (filename, raw_bytes, "image/jpeg")},
+                timeout=40,
+            )
+            if resp.status_code == 200 and resp.text.strip().startswith("http"):
+                url = resp.text.strip()
+                logger.info(f"✅ Litterbox CDN upload OK: {url}")
+                return url
+            logger.warning(f"Litterbox returned {resp.status_code}: {resp.text[:150]}")
+        except Exception as exc:
+            logger.warning(f"Litterbox CDN upload failed: {exc}")
+
+        logger.error(f"❌ All CDN upload attempts failed for: {local_path}")
         return ""
 
     # â”€â”€ PIL Fallback Renderer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
