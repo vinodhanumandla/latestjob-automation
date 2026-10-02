@@ -557,9 +557,9 @@ class ThumbnailGenerator:
     def upload_to_public_host(self, local_path: str) -> str:
         """
         Uploads generated thumbnail to a public CDN with multi-host waterfall fallback.
-        Tries multiple CDN hosts in sequence to guarantee a public https:// URL for Blogger.
+        Guarantees a public https://iili.io/... URL for Blogger.
 
-        Priority: Catbox.moe (no API key) → freeimage.host → Litterbox (72h fallback)
+        Priority: freeimage.host (iili.io) -> Litterbox (72h fallback)
         """
         import requests as _req
 
@@ -572,23 +572,7 @@ class ThumbnailGenerator:
         b64_data = base64.b64encode(raw_bytes).decode("utf-8")
         filename = os.path.basename(local_path)
 
-        # ── CDN 1: Catbox.moe (anonymous upload, no API key needed, very reliable) ──
-        try:
-            resp = _req.post(
-                "https://catbox.moe/user/api.php",
-                data={"reqtype": "fileupload"},
-                files={"fileToUpload": (filename, raw_bytes, "image/jpeg")},
-                timeout=40,
-            )
-            if resp.status_code == 200 and resp.text.strip().startswith("http"):
-                url = resp.text.strip()
-                logger.info(f"✅ Catbox.moe CDN upload OK: {url}")
-                return url
-            logger.warning(f"Catbox.moe returned {resp.status_code}: {resp.text[:150]}")
-        except Exception as exc:
-            logger.warning(f"Catbox.moe CDN upload failed: {exc}")
-
-        # ── CDN 2: freeimage.host (base64 upload) ──────────────────────────────
+        # ── CDN 1: freeimage.host (iili.io CDN - Most reliable, returns instant iili.io URL) ──
         try:
             resp = _req.post(
                 "https://freeimage.host/api/1/upload",
@@ -598,25 +582,27 @@ class ThumbnailGenerator:
                     "source": b64_data,
                     "format": "json",
                 },
-                timeout=40,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+                timeout=30,
             )
             if resp.status_code == 200:
                 data = resp.json()
                 img_url = (data.get("image") or {}).get("url", "")
                 if img_url and img_url.startswith("http"):
-                    logger.info(f"✅ freeimage.host CDN upload OK: {img_url}")
+                    logger.info(f"✅ freeimage.host (iili.io) CDN upload OK: {img_url}")
                     return img_url
             logger.warning(f"freeimage.host returned {resp.status_code}: {resp.text[:150]}")
         except Exception as exc:
             logger.warning(f"freeimage.host CDN upload failed: {exc}")
 
-        # ── CDN 3: Litterbox.catbox.moe (72h temp host, last resort) ───────────
+        # ── CDN 2: Litterbox.catbox.moe (72h temp host, last resort) ───────────
         try:
             resp = _req.post(
                 "https://litterbox.catbox.moe/resources/internals/api.php",
                 data={"reqtype": "fileupload", "time": "72h"},
                 files={"fileToUpload": (filename, raw_bytes, "image/jpeg")},
-                timeout=40,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+                timeout=30,
             )
             if resp.status_code == 200 and resp.text.strip().startswith("http"):
                 url = resp.text.strip()
