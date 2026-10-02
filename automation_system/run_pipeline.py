@@ -94,15 +94,11 @@ class JobPipeline:
             age_limit=extracted_info.get("age_limit", "")
         )
         # Upload thumbnail to public CDN so Google Blogger displays thumbnail in dashboard
-        # Retry up to 3 times to ensure we always get a public https:// URL
-        public_url = ""
-        for _attempt in range(3):
-            public_url = self.thumbnail_gen.upload_to_public_host(thumb_path)
-            if public_url and public_url.startswith("http"):
-                break
-            logger.warning(f"CDN upload attempt {_attempt + 1}/3 failed for job #{job_id}, retrying...")
-            import time as _time
-            _time.sleep(2)  # Brief pause before retry
+        public_url = self.thumbnail_gen.upload_to_public_host(thumb_path)
+        if not public_url or not public_url.startswith("http"):
+            logger.warning(f"All CDN uploads failed for job #{job_id}. Using base64 data URI fallback.")
+            public_url = self.thumbnail_gen.get_as_data_uri(thumb_path)
+
         thumb_url = public_url if public_url else f"/media/thumbnails/{thumb_filename}"
 
         # 2. Generate Content with Master Post Template
@@ -181,10 +177,12 @@ class JobPipeline:
         thumb_path = gen_post["thumbnail_path"]
         current_thumb_url = gen_post["thumbnail_url"] or ""
 
-        # If the thumbnail is not yet a public https:// URL, upload it now
-        if not current_thumb_url.startswith("http"):
+        # If the thumbnail is not yet a public https:// or data: URL, upload it now
+        if not current_thumb_url.startswith("http") and not current_thumb_url.startswith("data:"):
             if thumb_path and os.path.exists(thumb_path):
                 public_url = self.thumbnail_gen.upload_to_public_host(thumb_path)
+                if not public_url or not public_url.startswith("http"):
+                    public_url = self.thumbnail_gen.get_as_data_uri(thumb_path)
                 if public_url:
                     content_to_send = content_to_send.replace(current_thumb_url, public_url)
                     cursor.execute("UPDATE generated_posts SET thumbnail_url = ? WHERE id = ?", (public_url, gen_post["id"]))
@@ -419,9 +417,11 @@ class JobPipeline:
         thumb_path = gen_post["thumbnail_path"]
         current_thumb_url = gen_post["thumbnail_url"] or ""
 
-        if not current_thumb_url.startswith("http"):
+        if not current_thumb_url.startswith("http") and not current_thumb_url.startswith("data:"):
             if thumb_path and os.path.exists(thumb_path):
                 public_url = self.thumbnail_gen.upload_to_public_host(thumb_path)
+                if not public_url or not public_url.startswith("http"):
+                    public_url = self.thumbnail_gen.get_as_data_uri(thumb_path)
                 if public_url:
                     content_to_send = content_to_send.replace(current_thumb_url, public_url)
                     now_time = get_current_ist_time()

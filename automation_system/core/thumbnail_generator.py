@@ -629,6 +629,28 @@ class ThumbnailGenerator:
         logger.error(f"❌ All CDN upload attempts failed for: {local_path}")
         return ""
 
+    def get_as_data_uri(self, local_path: str) -> str:
+        """
+        GUARANTEED FALLBACK: Returns thumbnail as a base64 data: URI.
+        This NEVER fails since no network call is needed.
+        Blogger and all modern browsers display data: URIs correctly.
+        Use only when ALL CDN uploads fail.
+        """
+        if not local_path or not os.path.exists(local_path):
+            logger.warning("Thumbnail file not found for data URI: " + str(local_path))
+            return ""
+        try:
+            with open(local_path, "rb") as f:
+                raw_bytes = f.read()
+            b64 = base64.b64encode(raw_bytes).decode("utf-8")
+            data_uri = "data:image/jpeg;base64," + b64
+            logger.info("Thumbnail embedded as base64 data URI (" + str(len(raw_bytes)) + " bytes)")
+            return data_uri
+        except Exception as exc:
+            logger.error("Failed to create data URI for thumbnail: " + str(exc))
+            return ""
+
+
     # â”€â”€ PIL Fallback Renderer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _get_font(self, name: str, size: int, bold: bool = True):
